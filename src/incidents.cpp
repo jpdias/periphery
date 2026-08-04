@@ -236,7 +236,6 @@ static String inc_query() {
 }
 
 void incidents_tick() {
-  if (!cfg.screen_enabled[1]) return;   // Incidents screen disabled
   if (WiFi.status() != WL_CONNECTED) return;
   if (!INC_HOST[0] || !INC_PATH[0]) return;   // not configured in env.h
 
@@ -319,7 +318,6 @@ void incidents_tick() {
 // lock, so this is the only TLS session and is guaranteed to succeed if the
 // network is up.
 bool incidents_fetch_blocking(unsigned long timeoutMs) {
-  if (!cfg.screen_enabled[1]) return false;
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[INC] block: no wifi"); return false; }
   if (!INC_HOST[0] || !INC_PATH[0]) return false;   // not configured in env.h
   if (!tls_try_acquire()) { mlog.println("[INC] block: tls busy"); return false; }
