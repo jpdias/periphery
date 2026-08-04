@@ -29,25 +29,19 @@ int screenIndex = 0;          // 0..N -> screens 1..N+1
 const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system info
 
 // Geofence popup state: opens when an incident enters the radius, stays up for
-// POPUP_MS or until a short button press dismisses it. A manual dismissal is
-// remembered (persisted) so that incident never pops again; a 10-min timeout
-// just closes the popup and lets it re-alert later.
+// POPUP_MS or until a short button press dismisses it. Either dismissal is
+// persisted to LittleFS, so that incident never pops again (even after reboot).
 bool popupActive = false;
 static unsigned long popupUntil = 0;
 static uint32_t popupIncId = 0;
 
-// Close the popup without remembering the incident (timeout path).
-static void popup_close() {
-  popupActive = false;
-  popupUntil = 0;
-  drawnStatic = false;   // force a full redraw of the underlying screen
-}
-
-// Close the popup and permanently dismiss the incident (manual button path).
+// Close the popup and permanently dismiss the incident (button or timeout).
 static void popup_dismiss() {
   if (!popupActive) return;
   if (popupIncId) incidents_dismiss(popupIncId);
-  popup_close();
+  popupActive = false;
+  popupUntil = 0;
+  drawnStatic = false;   // force a full redraw of the underlying screen
 }
 
 // Display state: displayOn is the single source of truth for the physical
@@ -355,14 +349,14 @@ void loop() {
   // --- Geofence popup: open on a new in-radius incident, dismiss after 10 min ---
   if (popupActive) {
     if (millis() >= popupUntil) {
-      mlog.println("[POP] timed out (10 min)");
-      popup_close();
+      mlog.println("[POP] timed out (10 min), dismissed");
+      popup_dismiss();
     }
   } else if (screenOn) {
     int hit = incidents_geofence_hit();
     if (hit >= 0) {
       const Incident &inc = incidents_data().inc[hit];
-      if (!incidents_is_suppressed(inc.id)) {
+      if (!incidents_is_dismissed(inc.id)) {
         popupActive = true;
         popupIncId = inc.id;
         popupUntil = millis() + POPUP_MS;

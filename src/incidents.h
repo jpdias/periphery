@@ -57,8 +57,3 @@ int incidents_active_count();
 // the main screen still includes them (it reflects real alerts).
 void incidents_dismiss(uint32_t id);
 bool incidents_is_dismissed(uint32_t id);
-
-// Session-only suppression after a popup timeout: keeps the timed-out alert
-// from reopening this boot without permanently dismissing it.
-void incidents_snooze(uint32_t id);
-bool incidents_is_suppressed(uint32_t id);   // dismissed OR snoozed

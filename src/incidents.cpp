@@ -28,11 +28,6 @@ static bool gUpdated = false;
 static uint32_t dismissedIds[INCIDENT_DISMISS_MAX] = {0};
 static int dismissedCount = 0;
 
-// Session-only suppression for popups that simply timed out: keeps the popup
-// from instantly reopening, but is not persisted and clears on reboot.
-static uint32_t snoozedIds[INCIDENT_DISMISS_MAX] = {0};
-static int snoozedCount = 0;
-
 static void dismissed_load() {
   File f = LittleFS.open(DISMISS_PATH, "r");
   if (!f) return;
@@ -72,34 +67,9 @@ void incidents_dismiss(uint32_t id) {
   mlog.printf("[INC] dismissed %u\n", id);
 }
 
-// Session-only suppression after a popup timeout: keeps the timed-out alert
-// from instantly reopening this boot, but the incident stays visible in the
-// list and the count (unlike a manual dismissal).
-void incidents_snooze(uint32_t id) {
-  if (!id) return;
-  for (int i = 0; i < snoozedCount; i++) {
-    if (snoozedIds[i] == id) return;   // already snoozed
-  }
-  if (snoozedCount >= INCIDENT_DISMISS_MAX) {
-    memmove(snoozedIds, snoozedIds + 1, (INCIDENT_DISMISS_MAX - 1) * sizeof(uint32_t));
-    snoozedCount = INCIDENT_DISMISS_MAX - 1;
-  }
-  snoozedIds[snoozedCount++] = id;
-  mlog.printf("[INC] snoozed %u (timeout)\n", id);
-}
-
 bool incidents_is_dismissed(uint32_t id) {
   for (int i = 0; i < dismissedCount; i++) {
     if (dismissedIds[i] == id) return true;
-  }
-  return false;
-}
-
-// Popup suppression: manually dismissed OR timed-out this session.
-bool incidents_is_suppressed(uint32_t id) {
-  if (incidents_is_dismissed(id)) return true;
-  for (int i = 0; i < snoozedCount; i++) {
-    if (snoozedIds[i] == id) return true;
   }
   return false;
 }
@@ -426,7 +396,7 @@ int incidents_geofence_hit() {
   if (!gData.valid || gData.count == 0) return -1;
   float radiusKm = INCIDENT_RADIUS_M / 1000.0f;
   for (int i = 0; i < gData.count; i++) {
-    if (gData.inc[i].dst <= radiusKm && !incidents_is_suppressed(gData.inc[i].id)) return i;
+    if (gData.inc[i].dst <= radiusKm && !incidents_is_dismissed(gData.inc[i].id)) return i;
   }
   return -1;
 }
