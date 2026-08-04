@@ -876,10 +876,10 @@ void ui_screen_incidents() {
       tft.setCursor(2, y);
       tft.print(nt[0] ? nt : "---");
 
-      // Line 2: localidade, wrapped (advances y past each rendered line).
+      // Line 2: concelho, wrapped (advances y past each rendered line).
       int ly = y + 10;
       char loc[48];
-      strncpy(loc, in.localidade, sizeof(loc) - 1);
+      strncpy(loc, in.concelho, sizeof(loc) - 1);
       loc[sizeof(loc) - 1] = 0;
       sanitize_ascii(loc);
       abbrev_place(loc);
@@ -909,15 +909,16 @@ void ui_screen_incidents() {
     }
   }
 
-  // Last-refresh footer.
+  // Last-refresh footer: timestamp + result (OK/FAIL) of the last fetch.
   char ts[24];
   if (id.lastUpdated > 0) {
     const struct tm *t = localtime(&id.lastUpdated);
-    snprintf(ts, sizeof(ts), "upd %02d:%02d", t->tm_hour, t->tm_min);
+    snprintf(ts, sizeof(ts), "upd %02d:%02d %s", t->tm_hour, t->tm_min,
+             id.lastOk ? "OK" : "FAIL");
   } else {
     snprintf(ts, sizeof(ts), "upd --:--");
   }
-  tft.setTextColor(0xAD55);
+  tft.setTextColor(id.lastOk ? ST7735_GREEN : ST7735_RED);
   tft.setCursor(2, 150);
   tft.print(ts);
 

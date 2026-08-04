@@ -21,7 +21,8 @@ struct IncidentData {
   Incident inc[INCIDENT_MAX];  // sorted nearest-first by distance
   int count = 0;
   bool valid = false;
-  time_t lastUpdated = 0;      // unix time of last successful fetch
+  time_t lastUpdated = 0;      // unix time of last fetch attempt (ok or fail)
+  bool lastOk = false;         // result of that last fetch attempt
 };
 
 // Non-blocking incidents fetcher (TLS to the ArcGIS FeatureServer). Refreshes

@@ -12,7 +12,8 @@ static const char* INC_HOST = INCIDENTS_HOST;
 static const char* INC_PATH = INCIDENTS_PATH;
 static const uint16_t INC_PORT = 443;
 static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is heap-heavy)
-static const uint32_t INC_MIN_HEAP = 22000;        // skip fetch if heap too low
+static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
+static const uint32_t INC_MIN_HEAP = 16000;        // skip fetch if heap too low
 
 static IncidentData gData;
 static bool gUpdated = false;
@@ -24,6 +25,7 @@ enum Phase { P_IDLE, P_CONN, P_WAIT, P_HDR, P_READ };
 static Phase phase = P_IDLE;
 static unsigned long timer = 0;
 static unsigned long lastCycle = 0;
+static unsigned long retryAt = 0;   // early retry time after a defer/fail
 static bool first = true;
 
 const IncidentData& incidents_data() { return gData; }
@@ -35,7 +37,12 @@ bool incidents_updated() {
 
 int incidents_next_refresh_secs() {
   if (phase != P_IDLE) return 0;   // fetch in progress
-  unsigned long elapsed = millis() - lastCycle;
+  unsigned long now = millis();
+  if (retryAt > 0) {               // early retry scheduled (defer/fail)
+    if (now >= retryAt) return 0;
+    return (int)((retryAt - now + 999) / 1000);
+  }
+  unsigned long elapsed = now - lastCycle;
   if (elapsed >= INC_INTERVAL) return 0;
   return (int)((INC_INTERVAL - elapsed + 999) / 1000);
 }
@@ -44,9 +51,11 @@ void incidents_begin() {
   phase = P_IDLE;
   first = true;
   lastCycle = 0;
+  retryAt = 0;
   gData.valid = false;
   gData.count = 0;
   gData.lastUpdated = 0;
+  gData.lastOk = false;
 }
 
 static void cleanup() {
@@ -56,9 +65,13 @@ static void cleanup() {
 
 static void fail(const char *why) {
   mlog.printf("[INC] %s\n", why);
+  gData.lastUpdated = time_utc_now();
+  gData.lastOk = false;
   cleanup();
   phase = P_IDLE;
+  first = false;
   lastCycle = millis();
+  retryAt = millis() + INC_RETRY;   // retry sooner than the full 15 min
 }
 
 static void copy_field(const char *src, char *dst, size_t len) {
@@ -138,6 +151,7 @@ static void parse(Stream &s) {
   gData.count = n;
   gData.valid = true;
   gData.lastUpdated = time_utc_now();
+  gData.lastOk = true;
   gUpdated = true;
   mlog.printf("[INC] %d incidents\n", n);
 }
@@ -185,15 +199,19 @@ void incidents_tick() {
 
   // Global safety: abort any active phase that runs too long so the FSM can
   // never get wedged (mirrors the flight radar's watchdog).
-  if (phase != P_IDLE && millis() - timer > 12000) { fail("phase timeout"); return; }
+  if (phase != P_IDLE && millis() - timer > 20000) { fail("phase timeout"); return; }
 
   switch (phase) {
     case P_IDLE:
-      if (first || millis() - lastCycle >= INC_INTERVAL) {
+      // Trigger: first boot fetch, the 15-min cycle, or an early retry.
+      if (first || millis() - lastCycle >= INC_INTERVAL ||
+          (retryAt > 0 && millis() >= retryAt)) {
         // Only start if there's enough contiguous heap for TLS + JSON.
         if (ESP.getMaxFreeBlockSize() < INC_MIN_HEAP) {
-          if (first) mlog.println("[INC] low heap, deferring");
-          lastCycle = millis();
+          mlog.println("[INC] low heap, deferring 30s");
+          first = false;
+          lastCycle = millis();       // remember for the countdown
+          retryAt = millis() + INC_RETRY;   // retryAt overrides the interval
           return;
         }
         if (!tls_try_acquire()) {
@@ -243,6 +261,7 @@ void incidents_tick() {
         cleanup();
         phase = P_IDLE;
         lastCycle = millis();
+        retryAt = 0;
       } else if (!cli->connected()) {
         fail("empty body");
       } else if (millis() - timer > 8000) {
@@ -298,11 +317,18 @@ body:
     if (m == 4) {
       parse(*c);   // streams from the client, stops at closing brace
       ok = gData.valid;
+      if (!ok) {
+        gData.lastUpdated = time_utc_now();
+        gData.lastOk = false;
+      }
     }
     lastCycle = millis();
+    retryAt = 0;
     first = false;
   } else {
     mlog.println("[INC] block: connect failed");
+    gData.lastUpdated = time_utc_now();
+    gData.lastOk = false;
   }
   c->stop(); delete c;
   tls_release();
