@@ -307,7 +307,6 @@ void ui_screen_tag(int idx, int total) {
 void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
   tft.fillRect(0, 0, 128, 44, ST7735_BLACK);
-  tft.drawFastHLine(0, 44, 128, ST7735_BLUE);
 
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
@@ -343,12 +342,12 @@ void ui_draw_seconds(int s) {
 
 void ui_draw_uptime(unsigned long uptime) {
   char buf[16];
-  // Must match the uptime position drawn by ui_draw_metrics (y=116) so the
+  // Must match the uptime position drawn by ui_draw_metrics (y=112) so the
   // per-second tick and full redraws don't disagree and cause a vertical jump.
-  tft.fillRect(0, 116, 128, 10, ST7735_BLACK);
+  tft.fillRect(0, 112, 128, 10, ST7735_BLACK);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(2, 116);
+  tft.setCursor(2, 112);
   unsigned long up = uptime / 1000;
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);
@@ -362,11 +361,32 @@ static void draw_plane_icon(int cx, int cy, uint16_t col) {
   tft.drawFastHLine(cx - 1, cy + 4, 3, col);  // tailplane
 }
 
+// Small warning triangle (filled) with a black exclamation, ~8x8, centered
+// at (cx,cy). Used at the start of the main screen's alert line.
+static void draw_alert_icon(int cx, int cy, uint16_t col) {
+  tft.fillTriangle(cx, cy - 4, cx - 4, cy + 4, cx + 4, cy + 4, col);
+  tft.fillRect(cx - 1, cy - 2, 2, 3, ST7735_BLACK);   // exclamation stem
+  tft.fillRect(cx - 1, cy + 2, 2, 1, ST7735_BLACK);   // exclamation dot
+}
+
+// Small thermometer, ~8x10, centered at (cx,cy).
+static void draw_temp_icon(int cx, int cy, uint16_t col) {
+  tft.drawFastVLine(cx, cy - 4, 5, col);   // stem
+  tft.fillCircle(cx, cy + 3, 3, col);      // bulb
+}
+
+// Small water drop, ~8x9, centered at (cx,cy).
+static void draw_drop_icon(int cx, int cy, uint16_t col) {
+  tft.fillTriangle(cx, cy - 4, cx - 4, cy + 3, cx + 4, cy + 3, col);
+  tft.fillCircle(cx, cy + 3, 4, col);
+}
+
 // Auto-refreshing closest-flight readout on a single line at the bottom.
 // Drawn in its own isolated box so it can update without a full-screen redraw.
 void ui_draw_flightinfo(const FlightData &fd) {
-  const int by = 150, bh = 10;
+  const int by = 144, bh = 16;
   tft.fillRect(0, by, 128, bh, ST7735_BLACK);
+  tft.drawFastHLine(0, by, 128, ST7735_BLUE);
   draw_plane_icon(5, by + 4, ST7735_CYAN);
 
   tft.setTextSize(1);
@@ -968,12 +988,15 @@ void ui_popup_show(const Incident &inc) {
 void ui_draw_weather(const Weather &w) {
   char buf[20];
   tft.fillRect(0, 44, 128, 44, ST7735_BLACK);
+  tft.drawFastHLine(0, 44, 128, ST7735_BLUE);
 
+  // Temperature and humidity share the top line, each with an icon.
+  draw_temp_icon(5, 56, ST7735_GREEN);
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.setCursor(2, 48);
+  tft.setCursor(14, 48);
   if (w.valid) {
-    ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0, 2);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 14, 0, 2);
   } else {
     tft.print("--.-");
     int cx = tft.getCursorX(), cy = tft.getCursorY();
@@ -982,61 +1005,60 @@ void ui_draw_weather(const Weather &w) {
     tft.print("C");
   }
 
+  draw_drop_icon(88, 56, ST7735_CYAN);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(96, 52);
+  if (w.valid) {
+    snprintf(buf, sizeof(buf), "%d%%", w.humidity);
+    tft.print(buf);
+  } else {
+    tft.print("--");
+  }
+
   tft.setTextSize(1);
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(4, 70);
+  tft.setCursor(4, 72);
   if (w.valid) {
     char dbuf[32];
     strncpy(dbuf, w.desc, sizeof(dbuf) - 1);
     dbuf[sizeof(dbuf) - 1] = 0;
     tft.print(dbuf);
-    tft.setCursor(4, 80);
-    snprintf(buf, sizeof(buf), "Hum %d%%", w.humidity);
-    tft.print(buf);
   } else {
     tft.print("weather...");
   }
 }
 
 void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillRect(0, 88, 128, 62, ST7735_BLACK);
+  tft.fillRect(0, 88, 128, 54, ST7735_BLACK);
+  tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
 
-  if (!metrics) {
-    tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
-    // Active geofence alerts count — always visible on the main screen.
-    tft.setTextSize(1);
+  if (metrics) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, 94);
+    tft.print("LAN ");
+    tft.print(intIp);
+    tft.setCursor(2, 103);
+    tft.print("WAN ");
+    tft.print(extIp.length() ? extIp : "-");
+    tft.setCursor(2, 112);
+    unsigned long up = uptime / 1000;
     char buf[24];
-    tft.setCursor(2, 130);
-    int alerts = incidents_active_count();
-    tft.setTextColor(alerts > 0 ? ST7735_RED : ST7735_GREEN);
-    tft.print("alert ");
-    tft.print(alerts);
-    return;
+    snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
+             up / 3600, (up % 3600) / 60, up % 60);
+    tft.print(buf);
   }
 
-  tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 96);
-  tft.print("LAN ");
-  tft.print(intIp);
-  tft.setCursor(2, 106);
-  tft.print("WAN ");
-  tft.print(extIp.length() ? extIp : "-");
-  tft.setCursor(2, 116);
-  unsigned long up = uptime / 1000;
-  char buf[24];
-  snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
-           up / 3600, (up % 3600) / 60, up % 60);
-  tft.print(buf);
-
   // Separator above the alert line.
-  tft.drawFastHLine(2, 126, 124, ST7735_BLUE);
+  tft.drawFastHLine(2, 121, 124, ST7735_BLUE);
 
   // Active geofence alerts count — always visible on the main screen.
-  tft.setTextSize(1);
-  tft.setCursor(2, 130);
   int alerts = incidents_active_count();
-  tft.setTextColor(alerts > 0 ? ST7735_RED : ST7735_GREEN);
+  uint16_t acol = alerts > 0 ? ST7735_RED : ST7735_GREEN;
+  draw_alert_icon(7, 129, acol);
+  tft.setTextSize(1);
+  tft.setTextColor(acol);
+  tft.setCursor(14, 125);
   tft.print("alert ");
   tft.print(alerts);
 }
