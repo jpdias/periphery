@@ -344,7 +344,9 @@ void ui_draw_uptime(unsigned long uptime) {
   char buf[16];
   // Must match the uptime position drawn by ui_draw_metrics (y=112) so the
   // per-second tick and full redraws don't disagree and cause a vertical jump.
-  tft.fillRect(0, 112, 128, 10, ST7735_BLACK);
+  // 8px box = exactly the size-1 glyph row, so it never erases the separator
+  // line drawn at y=121 above the alert count.
+  tft.fillRect(0, 112, 128, 8, ST7735_BLACK);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
   tft.setCursor(2, 112);
@@ -991,7 +993,7 @@ void ui_draw_weather(const Weather &w) {
   tft.drawFastHLine(0, 44, 128, ST7735_BLUE);
 
   // Temperature and humidity share the top line, each with an icon.
-  draw_temp_icon(5, 56, ST7735_GREEN);
+  draw_temp_icon(5, 56, ST7735_RED);
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
   tft.setCursor(14, 48);
@@ -1008,7 +1010,7 @@ void ui_draw_weather(const Weather &w) {
   draw_drop_icon(88, 56, ST7735_CYAN);
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
-  tft.setCursor(96, 52);
+  tft.setCursor(96, 56);
   if (w.valid) {
     snprintf(buf, sizeof(buf), "%d%%", w.humidity);
     tft.print(buf);
@@ -1055,10 +1057,10 @@ void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigne
   // Active geofence alerts count — always visible on the main screen.
   int alerts = incidents_active_count();
   uint16_t acol = alerts > 0 ? ST7735_RED : ST7735_GREEN;
-  draw_alert_icon(7, 129, acol);
+  draw_alert_icon(7, 131, acol);
   tft.setTextSize(1);
   tft.setTextColor(acol);
-  tft.setCursor(14, 125);
+  tft.setCursor(14, 127);
   tft.print("alert ");
   tft.print(alerts);
 }
