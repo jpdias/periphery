@@ -388,7 +388,6 @@ static void draw_drop_icon(int cx, int cy, uint16_t col) {
 void ui_draw_flightinfo(const FlightData &fd) {
   const int by = 144, bh = 16;
   tft.fillRect(0, by, 128, bh, ST7735_BLACK);
-  tft.drawFastHLine(0, by, 128, ST7735_BLUE);
   draw_plane_icon(5, by + 4, ST7735_CYAN);
 
   tft.setTextSize(1);
@@ -877,7 +876,6 @@ void ui_screen_incidents() {
     for (int i = 0; i < id.count && shown < 4 && y <= 130; i++) {
       const Incident &in = id.inc[i];
       if (in.dst > radiusKm) continue;                 // crop to the geofence
-      if (incidents_is_dismissed(in.id)) continue;     // user dismissed it
 
       // natureza: strip the leading "NNNN - " code so the readable part fits.
       char raw[24];

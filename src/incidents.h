@@ -4,7 +4,7 @@
 
 #define INCIDENT_MAX 5
 
-// Max incident IDs remembered as dismissed (persisted to LittleFS).
+// Max incident IDs remembered as dismissed (in-RAM, this boot only).
 #define INCIDENT_DISMISS_MAX 32
 
 // Geofence trigger radius (meters). Configurable constant.
@@ -49,12 +49,12 @@ int incidents_geofence_hit();
 
 // Number of incidents currently inside the geofence radius (active alerts).
 // Counts every in-radius incident regardless of dismissal: dismissal only
-// suppresses the popup and list, never the alert count.
+// suppresses the popup, never the alert count.
 int incidents_active_count();
 
-// Remember an incident as dismissed (in-RAM, this boot only); dismissed
-// incidents are excluded from the popup and the incidents list. The
-// active-alert count on the main screen still includes them (it reflects real
-// alerts). Dismissals reset on reboot so an alert can pop again later.
+// Remember an incident as dismissed (in-RAM, this boot only). Dismissal only
+// stops the geofence popup from reopening for this incident; the incident
+// stays in the Incidents list and in the alert count. Dismissals reset on
+// reboot so an alert can pop again later.
 void incidents_dismiss(uint32_t id);
 bool incidents_is_dismissed(uint32_t id);
