@@ -1061,6 +1061,19 @@ void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigne
   tft.setCursor(14, 127);
   tft.print("alert ");
   tft.print(alerts);
+  tft.print(" (upd ");
+  time_t up = incidents_data().lastUpdated;
+  if (up > 0) {
+    const struct tm *t = localtime(&up);
+    tft.print(t->tm_hour < 10 ? "0" : "");
+    tft.print(t->tm_hour);
+    tft.print(":");
+    tft.print(t->tm_min < 10 ? "0" : "");
+    tft.print(t->tm_min);
+  } else {
+    tft.print("--:--");
+  }
+  tft.print(")");
 }
 
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,
