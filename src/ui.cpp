@@ -852,7 +852,7 @@ static void ui_print_wrap(const char *text, int x, int &y, int maxChars, uint16_
 
 // The most recent incidents, cropped to the geofence radius (only incidents
 // within INCIDENT_RADIUS_M) and listed nearest-first. Shows up to 4 rows; each
-// row has natureza (code stripped), the localidade wrapped to the screen width,
+// row has natureza (code stripped), the concelho wrapped to the screen width,
 // then distance + estado.
 void ui_screen_incidents() {
   tft.fillScreen(ST7735_BLACK);
@@ -963,16 +963,10 @@ void ui_popup_show(const Incident &inc) {
   tft.drawFastHLine(bx + 4, y, bw - 8, ST7735_RED);
   y += 4;
 
-  char loc[48];
-  strncpy(loc, inc.localidade, sizeof(loc) - 1);
-  loc[sizeof(loc) - 1] = 0;
-  sanitize_ascii(loc);
-  abbrev_place(loc);
   ui_print_wrap(inc.natureza, bx + 6, y, 18, ST7735_WHITE);
   y += 2;
   ui_print_wrap(inc.estado, bx + 6, y, 18, ST7735_YELLOW);
   ui_print_wrap(inc.concelho, bx + 6, y, 18, ST7735_CYAN);
-  ui_print_wrap(loc, bx + 6, y, 18, ST7735_WHITE);
   ui_print_wrap(inc.dataHora, bx + 6, y, 18, 0xAD55);
 
   char buf[16];
@@ -982,6 +976,12 @@ void ui_popup_show(const Incident &inc) {
   tft.setTextColor(0xAD55);
   tft.setCursor(bx + 6, y);
   tft.print("Btn: dismiss");
+}
+
+// Blank the whole panel, clearing any popup residue (red borders etc.) left at
+// screen edges not covered by the underlying screen's block redraw.
+void ui_clear() {
+  tft.fillScreen(ST7735_BLACK);
 }
 
 // ---------- Legacy combined (unused by loop, kept for reference) ----------
@@ -1030,7 +1030,7 @@ void ui_draw_weather(const Weather &w) {
 }
 
 void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillRect(0, 88, 128, 54, ST7735_BLACK);
+  tft.fillRect(0, 88, 128, 56, ST7735_BLACK);   // 88..144, overlaps the flight box top
   tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
 
   if (metrics) {

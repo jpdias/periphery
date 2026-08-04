@@ -33,6 +33,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f);
 void ui_screen_detail(int h, int m, int s, const Weather &w);
 void ui_screen_incidents();   // nearest incidents list (screen 2)
 void ui_popup_show(const Incident &inc);   // geofence alert overlay
+void ui_clear();   // blank the whole panel (used after the popup closes)
 void ui_screen_monitors();
 void ui_screen_esphome();
 void ui_screen_flight(const FlightData &fd, int rangeNm);

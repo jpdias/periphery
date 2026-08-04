@@ -42,6 +42,7 @@ static void popup_dismiss() {
   if (popupIncId) incidents_dismiss(popupIncId);
   popupActive = false;
   popupUntil = 0;
+  ui_clear();      // wipe popup residue (red borders) before the redraw
   drawnStatic = false;   // force a full redraw of the underlying screen
 }
 
