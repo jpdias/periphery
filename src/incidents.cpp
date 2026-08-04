@@ -4,6 +4,7 @@
 #include "env.h"
 #include "nettime.h"
 #include "tlslock.h"
+#include <LittleFS.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -15,8 +16,93 @@ static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is hea
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
 static const uint32_t INC_MIN_HEAP = 16000;        // skip fetch if heap too low
 
+#define DISMISS_PATH "/dismissed.json"
+
 static IncidentData gData;
 static bool gUpdated = false;
+
+// Incident IDs the user has dismissed. Persisted to LittleFS so a dismissed
+// alert stays gone across reboots. New incidents get new IDs (ArcGIS ID_oc),
+// so old entries never match fresh incidents; the array simply holds the most
+// recent INCIDENT_DISMISS_MAX dismissals.
+static uint32_t dismissedIds[INCIDENT_DISMISS_MAX] = {0};
+static int dismissedCount = 0;
+
+// Session-only suppression for popups that simply timed out: keeps the popup
+// from instantly reopening, but is not persisted and clears on reboot.
+static uint32_t snoozedIds[INCIDENT_DISMISS_MAX] = {0};
+static int snoozedCount = 0;
+
+static void dismissed_load() {
+  File f = LittleFS.open(DISMISS_PATH, "r");
+  if (!f) return;
+  DynamicJsonDocument doc(1024);
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+  if (err) return;
+  JsonArray arr = doc["ids"].as<JsonArray>();
+  dismissedCount = 0;
+  for (JsonVariant v : arr) {
+    if (dismissedCount >= INCIDENT_DISMISS_MAX) break;
+    dismissedIds[dismissedCount++] = (uint32_t)v.as<unsigned long>();
+  }
+}
+
+static void dismissed_save() {
+  DynamicJsonDocument doc(1024);
+  JsonArray arr = doc.createNestedArray("ids");
+  for (int i = 0; i < dismissedCount; i++) arr.add(dismissedIds[i]);
+  File f = LittleFS.open(DISMISS_PATH, "w");
+  if (!f) return;
+  serializeJson(doc, f);
+  f.close();
+}
+
+void incidents_dismiss(uint32_t id) {
+  if (!id) return;
+  for (int i = 0; i < dismissedCount; i++) {
+    if (dismissedIds[i] == id) return;   // already known
+  }
+  if (dismissedCount >= INCIDENT_DISMISS_MAX) {
+    memmove(dismissedIds, dismissedIds + 1, (INCIDENT_DISMISS_MAX - 1) * sizeof(uint32_t));
+    dismissedCount = INCIDENT_DISMISS_MAX - 1;
+  }
+  dismissedIds[dismissedCount++] = id;
+  dismissed_save();
+  mlog.printf("[INC] dismissed %u\n", id);
+}
+
+// Session-only suppression after a popup timeout: keeps the timed-out alert
+// from instantly reopening this boot, but the incident stays visible in the
+// list and the count (unlike a manual dismissal).
+void incidents_snooze(uint32_t id) {
+  if (!id) return;
+  for (int i = 0; i < snoozedCount; i++) {
+    if (snoozedIds[i] == id) return;   // already snoozed
+  }
+  if (snoozedCount >= INCIDENT_DISMISS_MAX) {
+    memmove(snoozedIds, snoozedIds + 1, (INCIDENT_DISMISS_MAX - 1) * sizeof(uint32_t));
+    snoozedCount = INCIDENT_DISMISS_MAX - 1;
+  }
+  snoozedIds[snoozedCount++] = id;
+  mlog.printf("[INC] snoozed %u (timeout)\n", id);
+}
+
+bool incidents_is_dismissed(uint32_t id) {
+  for (int i = 0; i < dismissedCount; i++) {
+    if (dismissedIds[i] == id) return true;
+  }
+  return false;
+}
+
+// Popup suppression: manually dismissed OR timed-out this session.
+bool incidents_is_suppressed(uint32_t id) {
+  if (incidents_is_dismissed(id)) return true;
+  for (int i = 0; i < snoozedCount; i++) {
+    if (snoozedIds[i] == id) return true;
+  }
+  return false;
+}
 
 // One BearSSL client, created per-fetch to release its buffers between requests.
 static BearSSL::WiFiClientSecure *cli = nullptr;
@@ -56,6 +142,7 @@ void incidents_begin() {
   gData.count = 0;
   gData.lastUpdated = 0;
   gData.lastOk = false;
+  dismissed_load();
 }
 
 static void cleanup() {
@@ -339,7 +426,17 @@ int incidents_geofence_hit() {
   if (!gData.valid || gData.count == 0) return -1;
   float radiusKm = INCIDENT_RADIUS_M / 1000.0f;
   for (int i = 0; i < gData.count; i++) {
-    if (gData.inc[i].dst <= radiusKm) return i;
+    if (gData.inc[i].dst <= radiusKm && !incidents_is_suppressed(gData.inc[i].id)) return i;
   }
   return -1;
+}
+
+int incidents_active_count() {
+  if (!gData.valid || gData.count == 0) return 0;
+  float radiusKm = INCIDENT_RADIUS_M / 1000.0f;
+  int n = 0;
+  for (int i = 0; i < gData.count; i++) {
+    if (gData.inc[i].dst <= radiusKm) n++;
+  }
+  return n;
 }

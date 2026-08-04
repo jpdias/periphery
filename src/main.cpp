@@ -29,28 +29,25 @@ int screenIndex = 0;          // 0..N -> screens 1..N+1
 const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system info
 
 // Geofence popup state: opens when an incident enters the radius, stays up for
-// POPUP_MS or until a short button press dismisses it. Dismissed incident IDs
-// are remembered so a static device doesn't re-pop the same one on every poll.
+// POPUP_MS or until a short button press dismisses it. A manual dismissal is
+// remembered (persisted) so that incident never pops again; a 10-min timeout
+// just closes the popup and lets it re-alert later.
 bool popupActive = false;
 static unsigned long popupUntil = 0;
 static uint32_t popupIncId = 0;
-static uint32_t dismissedIds[INCIDENT_MAX] = {0};
-static int dismissedCount = 0;
 
-static bool popup_is_dismissed(uint32_t id) {
-  for (int i = 0; i < dismissedCount; i++)
-    if (dismissedIds[i] == id) return true;
-  return false;
-}
-
-static void popup_dismiss() {
-  if (!popupActive) return;
-  if (popupIncId && !popup_is_dismissed(popupIncId) && dismissedCount < INCIDENT_MAX) {
-    dismissedIds[dismissedCount++] = popupIncId;
-  }
+// Close the popup without remembering the incident (timeout path).
+static void popup_close() {
   popupActive = false;
   popupUntil = 0;
   drawnStatic = false;   // force a full redraw of the underlying screen
+}
+
+// Close the popup and permanently dismiss the incident (manual button path).
+static void popup_dismiss() {
+  if (!popupActive) return;
+  if (popupIncId) incidents_dismiss(popupIncId);
+  popup_close();
 }
 
 // Display state: displayOn is the single source of truth for the physical
@@ -359,13 +356,13 @@ void loop() {
   if (popupActive) {
     if (millis() >= popupUntil) {
       mlog.println("[POP] timed out (10 min)");
-      popup_dismiss();
+      popup_close();
     }
   } else if (screenOn) {
     int hit = incidents_geofence_hit();
     if (hit >= 0) {
       const Incident &inc = incidents_data().inc[hit];
-      if (!popup_is_dismissed(inc.id)) {
+      if (!incidents_is_suppressed(inc.id)) {
         popupActive = true;
         popupIncId = inc.id;
         popupUntil = millis() + POPUP_MS;
