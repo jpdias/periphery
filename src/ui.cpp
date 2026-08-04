@@ -306,7 +306,8 @@ void ui_screen_tag(int idx, int total) {
 // HH:MM fills the width (size 3), :SS at far right (size 2) on the same line.
 void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
-  tft.fillRect(0, 0, 128, 52, ST7735_BLACK);
+  tft.fillRect(0, 0, 128, 44, ST7735_BLACK);
+  tft.drawFastHLine(0, 44, 128, ST7735_BLUE);
 
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
@@ -342,12 +343,12 @@ void ui_draw_seconds(int s) {
 
 void ui_draw_uptime(unsigned long uptime) {
   char buf[16];
-  // Must match the uptime position drawn by ui_draw_metrics (y=124) so the
+  // Must match the uptime position drawn by ui_draw_metrics (y=116) so the
   // per-second tick and full redraws don't disagree and cause a vertical jump.
-  tft.fillRect(0, 124, 128, 10, ST7735_BLACK);
+  tft.fillRect(0, 116, 128, 10, ST7735_BLACK);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(2, 124);
+  tft.setCursor(2, 116);
   unsigned long up = uptime / 1000;
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);
@@ -966,12 +967,11 @@ void ui_popup_show(const Incident &inc) {
 // ---------- Legacy combined (unused by loop, kept for reference) ----------
 void ui_draw_weather(const Weather &w) {
   char buf[20];
-  tft.fillRect(0, 52, 128, 44, ST7735_BLACK);
-  tft.drawFastHLine(0, 52, 128, ST7735_BLUE);
+  tft.fillRect(0, 44, 128, 44, ST7735_BLACK);
 
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.setCursor(2, 56);
+  tft.setCursor(2, 48);
   if (w.valid) {
     ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0, 2);
   } else {
@@ -984,13 +984,13 @@ void ui_draw_weather(const Weather &w) {
 
   tft.setTextSize(1);
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(4, 78);
+  tft.setCursor(4, 70);
   if (w.valid) {
     char dbuf[32];
     strncpy(dbuf, w.desc, sizeof(dbuf) - 1);
     dbuf[sizeof(dbuf) - 1] = 0;
     tft.print(dbuf);
-    tft.setCursor(4, 88);
+    tft.setCursor(4, 80);
     snprintf(buf, sizeof(buf), "Hum %d%%", w.humidity);
     tft.print(buf);
   } else {
@@ -999,32 +999,46 @@ void ui_draw_weather(const Weather &w) {
 }
 
 void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillRect(0, 96, 128, 54, ST7735_BLACK);
+  tft.fillRect(0, 88, 128, 62, ST7735_BLACK);
+
+  if (!metrics) {
+    tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
+    // Active geofence alerts count — always visible on the main screen.
+    tft.setTextSize(1);
+    char buf[24];
+    tft.setCursor(2, 130);
+    int alerts = incidents_active_count();
+    tft.setTextColor(alerts > 0 ? ST7735_RED : ST7735_GREEN);
+    tft.print("alert ");
+    tft.print(alerts);
+    return;
+  }
+
+  tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(2, 96);
+  tft.print("LAN ");
+  tft.print(intIp);
+  tft.setCursor(2, 106);
+  tft.print("WAN ");
+  tft.print(extIp.length() ? extIp : "-");
+  tft.setCursor(2, 116);
+  unsigned long up = uptime / 1000;
+  char buf[24];
+  snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
+           up / 3600, (up % 3600) / 60, up % 60);
+  tft.print(buf);
+
+  // Separator above the alert line.
+  tft.drawFastHLine(2, 126, 124, ST7735_BLUE);
 
   // Active geofence alerts count — always visible on the main screen.
   tft.setTextSize(1);
-  char buf[24];
-  tft.setCursor(2, 134);
+  tft.setCursor(2, 130);
   int alerts = incidents_active_count();
   tft.setTextColor(alerts > 0 ? ST7735_RED : ST7735_GREEN);
   tft.print("alert ");
   tft.print(alerts);
-
-  if (!metrics) return;
-
-  tft.drawFastHLine(0, 98, 128, ST7735_BLUE);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 104);
-  tft.print("LAN ");
-  tft.print(intIp);
-  tft.setCursor(2, 114);
-  tft.print("WAN ");
-  tft.print(extIp.length() ? extIp : "-");
-  tft.setCursor(2, 124);
-  unsigned long up = uptime / 1000;
-  snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
-           up / 3600, (up % 3600) / 60, up % 60);
-  tft.print(buf);
 }
 
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,
