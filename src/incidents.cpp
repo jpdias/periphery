@@ -18,29 +18,43 @@ static const uint32_t INC_MIN_HEAP = 16000;        // skip fetch if heap too low
 static IncidentData gData;
 static bool gUpdated = false;
 
-// Incident IDs the user has dismissed this boot (in-RAM only, cleared on
-// reboot). New incidents get new IDs (ArcGIS ID_oc), so old entries never match
-// fresh incidents; the array simply holds the most recent INCIDENT_DISMISS_MAX
-// dismissals.
-static uint32_t dismissedIds[INCIDENT_DISMISS_MAX] = {0};
+// Incident fingerprints the user has dismissed this boot (in-RAM only, cleared
+// on reboot). Keyed on fp (natureza+concelho+dataHora) instead of the feed's
+// ID_oc because ArcGIS regenerates ID_oc on every refresh; the array simply
+// holds the most recent INCIDENT_DISMISS_MAX dismissals.
+static uint32_t dismissedFps[INCIDENT_DISMISS_MAX] = {0};
 static int dismissedCount = 0;
 
-void incidents_dismiss(uint32_t id) {
-  if (!id) return;
-  for (int i = 0; i < dismissedCount; i++) {
-    if (dismissedIds[i] == id) return;   // already known
-  }
-  if (dismissedCount >= INCIDENT_DISMISS_MAX) {
-    memmove(dismissedIds, dismissedIds + 1, (INCIDENT_DISMISS_MAX - 1) * sizeof(uint32_t));
-    dismissedCount = INCIDENT_DISMISS_MAX - 1;
-  }
-  dismissedIds[dismissedCount++] = id;
-  mlog.printf("[INC] dismissed %u\n", id);
+// FNV-1a hash of a C string.
+static uint32_t fnv1a(const char *s) {
+  uint32_t h = 2166136261u;
+  for (; *s; s++) { h ^= (uint8_t)*s; h *= 16777619u; }
+  return h;
 }
 
-bool incidents_is_dismissed(uint32_t id) {
+// Stable identity for a physical incident across feed refreshes.
+static uint32_t incident_fp(const Incident &inc) {
+  uint32_t h = fnv1a(inc.natureza);
+  h = (h ^ fnv1a(inc.concelho)) * 16777619u;
+  return (h ^ fnv1a(inc.dataHora)) * 16777619u;
+}
+
+void incidents_dismiss(uint32_t fp) {
+  if (!fp) return;
   for (int i = 0; i < dismissedCount; i++) {
-    if (dismissedIds[i] == id) return true;
+    if (dismissedFps[i] == fp) return;   // already known
+  }
+  if (dismissedCount >= INCIDENT_DISMISS_MAX) {
+    memmove(dismissedFps, dismissedFps + 1, (INCIDENT_DISMISS_MAX - 1) * sizeof(uint32_t));
+    dismissedCount = INCIDENT_DISMISS_MAX - 1;
+  }
+  dismissedFps[dismissedCount++] = fp;
+  mlog.printf("[INC] dismissed fp %08X\n", fp);
+}
+
+bool incidents_is_dismissed(uint32_t fp) {
+  for (int i = 0; i < dismissedCount; i++) {
+    if (dismissedFps[i] == fp) return true;
   }
   return false;
 }
@@ -168,6 +182,7 @@ static void parse(Stream &s) {
     copy_field(prop["Concelho"] | "", inc.concelho, sizeof(inc.concelho));
     copy_field(prop["Localidade"] | "", inc.localidade, sizeof(inc.localidade));
     copy_field(prop["DataInicioOcorrencia"] | "", inc.dataHora, sizeof(inc.dataHora));
+    inc.fp = incident_fp(inc);
     JsonArray coords = f["geometry"]["coordinates"];
     if (coords.size() >= 2) {
       inc.dst = haversine_km(cfg.lat, cfg.lon, (float)coords[1], (float)coords[0]);
@@ -367,7 +382,7 @@ int incidents_geofence_hit() {
   if (!gData.valid || gData.count == 0) return -1;
   float radiusKm = INCIDENT_RADIUS_M / 1000.0f;
   for (int i = 0; i < gData.count; i++) {
-    if (gData.inc[i].dst <= radiusKm && !incidents_is_dismissed(gData.inc[i].id)) return i;
+    if (gData.inc[i].dst <= radiusKm && !incidents_is_dismissed(gData.inc[i].fp)) return i;
   }
   return -1;
 }

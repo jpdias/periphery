@@ -34,12 +34,13 @@ const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system inf
 // after a reboot.
 bool popupActive = false;
 static unsigned long popupUntil = 0;
-static uint32_t popupIncId = 0;
+static uint32_t popupIncFp = 0;
 
-// Close the popup and permanently dismiss the incident (button or timeout).
+// Close the popup and dismiss the incident by its stable fingerprint (button
+// or timeout).
 static void popup_dismiss() {
   if (!popupActive) return;
-  if (popupIncId) incidents_dismiss(popupIncId);
+  if (popupIncFp) incidents_dismiss(popupIncFp);
   popupActive = false;
   popupUntil = 0;
   ui_clear();      // wipe popup residue (red borders) before the redraw
@@ -358,11 +359,11 @@ void loop() {
     int hit = incidents_geofence_hit();
     if (hit >= 0) {
       const Incident &inc = incidents_data().inc[hit];
-      if (!incidents_is_dismissed(inc.id)) {
+      if (!incidents_is_dismissed(inc.fp)) {
         popupActive = true;
-        popupIncId = inc.id;
+        popupIncFp = inc.fp;
         popupUntil = millis() + POPUP_MS;
-        mlog.printf("[POP] alert: %u %.1fkm\n", inc.id, inc.dst);
+        mlog.printf("[POP] alert: %u fp=%08X %.1fkm\n", inc.id, inc.fp, inc.dst);
         ui_popup_show(inc);
       }
     }
