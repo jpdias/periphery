@@ -11,7 +11,7 @@
 #define MONITOR_LEN    64
 
 #define ESPHOME_SENSORS_LEN 192
-#define SCREEN_MAX 7   // Clock, ESPHome, Forecast, Detail, Monitors, Flight, System
+#define SCREEN_MAX 8   // Clock, Incidents, ESPHome, Forecast, Detail, Monitors, Flight, System
 
 struct Config {
   char wifi_ssid[33] = {0};
@@ -30,7 +30,7 @@ struct Config {
   int   night_start = 23;         // hour display turns off (== night_end disables)
   int   night_end = 7;            // hour display turns on
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
-  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true };
+  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true };
   bool  backlight_control = true;   // drive backlight via transistor on D8/GPIO15
   bool  backlight_active_high = true;// GPIO level that turns the backlight ON
 };
