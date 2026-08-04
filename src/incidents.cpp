@@ -4,7 +4,6 @@
 #include "env.h"
 #include "nettime.h"
 #include "tlslock.h"
-#include <LittleFS.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -16,42 +15,15 @@ static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is hea
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
 static const uint32_t INC_MIN_HEAP = 16000;        // skip fetch if heap too low
 
-#define DISMISS_PATH "/dismissed.json"
-
 static IncidentData gData;
 static bool gUpdated = false;
 
-// Incident IDs the user has dismissed. Persisted to LittleFS so a dismissed
-// alert stays gone across reboots. New incidents get new IDs (ArcGIS ID_oc),
-// so old entries never match fresh incidents; the array simply holds the most
-// recent INCIDENT_DISMISS_MAX dismissals.
+// Incident IDs the user has dismissed this boot (in-RAM only, cleared on
+// reboot). New incidents get new IDs (ArcGIS ID_oc), so old entries never match
+// fresh incidents; the array simply holds the most recent INCIDENT_DISMISS_MAX
+// dismissals.
 static uint32_t dismissedIds[INCIDENT_DISMISS_MAX] = {0};
 static int dismissedCount = 0;
-
-static void dismissed_load() {
-  File f = LittleFS.open(DISMISS_PATH, "r");
-  if (!f) return;
-  DynamicJsonDocument doc(1024);
-  DeserializationError err = deserializeJson(doc, f);
-  f.close();
-  if (err) return;
-  JsonArray arr = doc["ids"].as<JsonArray>();
-  dismissedCount = 0;
-  for (JsonVariant v : arr) {
-    if (dismissedCount >= INCIDENT_DISMISS_MAX) break;
-    dismissedIds[dismissedCount++] = (uint32_t)v.as<unsigned long>();
-  }
-}
-
-static void dismissed_save() {
-  DynamicJsonDocument doc(1024);
-  JsonArray arr = doc.createNestedArray("ids");
-  for (int i = 0; i < dismissedCount; i++) arr.add(dismissedIds[i]);
-  File f = LittleFS.open(DISMISS_PATH, "w");
-  if (!f) return;
-  serializeJson(doc, f);
-  f.close();
-}
 
 void incidents_dismiss(uint32_t id) {
   if (!id) return;
@@ -63,7 +35,6 @@ void incidents_dismiss(uint32_t id) {
     dismissedCount = INCIDENT_DISMISS_MAX - 1;
   }
   dismissedIds[dismissedCount++] = id;
-  dismissed_save();
   mlog.printf("[INC] dismissed %u\n", id);
 }
 
@@ -112,7 +83,7 @@ void incidents_begin() {
   gData.count = 0;
   gData.lastUpdated = 0;
   gData.lastOk = false;
-  dismissed_load();
+  dismissedCount = 0;   // dismissals are in-RAM only; reset on boot
 }
 
 static void cleanup() {

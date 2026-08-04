@@ -29,8 +29,9 @@ int screenIndex = 0;          // 0..N -> screens 1..N+1
 const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system info
 
 // Geofence popup state: opens when an incident enters the radius, stays up for
-// POPUP_MS or until a short button press dismisses it. Either dismissal is
-// persisted to LittleFS, so that incident never pops again (even after reboot).
+// POPUP_MS or until a short button press dismisses it. Dismissals are in-RAM
+// (this boot only) so the alert won't re-pop during the session but can again
+// after a reboot.
 bool popupActive = false;
 static unsigned long popupUntil = 0;
 static uint32_t popupIncId = 0;

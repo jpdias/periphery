@@ -52,8 +52,9 @@ int incidents_geofence_hit();
 // suppresses the popup and list, never the alert count.
 int incidents_active_count();
 
-// Remember an incident as dismissed (persisted); dismissed incidents are
-// excluded from the popup and the incidents list. The active-alert count on
-// the main screen still includes them (it reflects real alerts).
+// Remember an incident as dismissed (in-RAM, this boot only); dismissed
+// incidents are excluded from the popup and the incidents list. The
+// active-alert count on the main screen still includes them (it reflects real
+// alerts). Dismissals reset on reboot so an alert can pop again later.
 void incidents_dismiss(uint32_t id);
 bool incidents_is_dismissed(uint32_t id);
