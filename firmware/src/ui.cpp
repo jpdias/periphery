@@ -421,7 +421,7 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
   ui_draw_weather(w);
   ui_draw_flightinfo(flight_data());
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
-  ui_screen_tag(1, 8);
+  ui_screen_tag(1, 9);
 }
 
 // ---------- Screen 2: 3-day forecast ----------
@@ -468,7 +468,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
     if (i < 2) tft.drawFastHLine(0, y + rowH - 2, 128, 0x2104);
     y += rowH;
   }
-  ui_screen_tag(4, 8);
+  ui_screen_tag(5, 9);
 }
 
 // ---------- Screen: ESPHome sensors ----------
@@ -516,7 +516,7 @@ void ui_screen_esphome() {
     }
     y += 32;
   }
-  ui_screen_tag(3, 8);
+  ui_screen_tag(4, 9);
 }
 
 // ---------- Screen: Weather detail ----------
@@ -614,7 +614,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setCursor(8, 44);
     tft.print("no data");
   }
-  ui_screen_tag(5, 8);
+  ui_screen_tag(6, 9);
 }
 
 // ---------- Screen: Website monitors ----------
@@ -648,7 +648,7 @@ void ui_screen_monitors() {
     tft.print(buf);
     y += 30;
   }
-  ui_screen_tag(6, 8);
+  ui_screen_tag(7, 9);
 }
 
 // Color code for a flight class tag.
@@ -679,7 +679,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.setTextColor(ST7735_WHITE);
     tft.setCursor(10, 70);
     tft.print("Disabled (set range)");
-    ui_screen_tag(7, 8);
+    ui_screen_tag(8, 9);
     return;
   }
 
@@ -739,7 +739,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
   }
 
   ui_draw_flight_countdown();
-  ui_screen_tag(7, 8);
+  ui_screen_tag(8, 9);
 }
 
 // Next-refresh countdown in the bottom-right corner of the radar.
@@ -796,7 +796,7 @@ void ui_screen_system(int rssi, String intIp, unsigned long uptime) {
   tft.setCursor(44, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
 
   ui_system_update(rssi, uptime);
-  ui_screen_tag(8, 8);
+  ui_screen_tag(9, 9);
 }
 
 void ui_system_update(int rssi, unsigned long uptime) {
@@ -944,7 +944,91 @@ void ui_screen_incidents() {
   tft.setCursor(2, 150);
   tft.print(ts);
 
-  ui_screen_tag(2, 8);
+  ui_screen_tag(2, 9);
+}
+
+// IP (Infraestruturas de Portugal) departures from the configured station,
+// time-ordered, up to TRAIN_MAX rows.
+// Each row shows departure time + destination, then operator + delay.
+void ui_screen_trains() {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(2, 2);
+  tft.print("Trains");
+  tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
+
+  const TrainData &td = trains_data();
+  int y = 22;
+  char buf[40];
+
+  if (!cfg.ip_station[0]) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, y);
+    tft.print("no station set");
+  } else if (!td.valid) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, y);
+    tft.print("loading...");
+  } else if (td.count == 0) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, y);
+    tft.print("no trains");
+  } else {
+    for (int i = 0; i < td.count && i < TRAIN_MAX; i++) {
+      const Train &t = td.trains[i];
+
+      // Line 1: departure time (yellow if delayed) + destination, with a clear
+      // gap so the two don't run together.
+      tft.setTextColor(t.delay > 0 ? ST7735_YELLOW : ST7735_GREEN);
+      tft.setCursor(2, y);
+      tft.print(t.departure);
+      tft.setTextColor(ST7735_WHITE);
+      tft.setCursor(44, y);
+      char dst[24];
+      strncpy(dst, t.destination, sizeof(dst) - 1);
+      dst[sizeof(dst) - 1] = 0;
+      sanitize_ascii(dst);
+      abbrev_place(dst);
+      if (strlen(dst) > 13) dst[13] = 0;
+      tft.print(dst[0] ? dst : "---");
+
+      // Line 2: train number + delay. The operator is the same for every train
+      // at a configured station, so it's dropped in favour of the train number.
+      int ly = y + 10;
+      tft.setTextColor(0xAD55);
+      tft.setCursor(44, ly);
+      if (t.number > 0) {
+        snprintf(buf, sizeof(buf), "N%d", t.number);
+        tft.print(buf);
+      } else {
+        tft.print("train");
+      }
+      if (t.delay > 0) {
+        tft.setTextColor(ST7735_RED);
+        tft.setCursor(100, ly);
+        snprintf(buf, sizeof(buf), "+%dm", t.delay);
+        tft.print(buf);
+      }
+      y = ly + 10 + 2;
+      if (y > 130) break;
+    }
+  }
+
+  // Last-refresh footer: timestamp + result of the last fetch.
+  char ts[24];
+  if (td.lastUpdated > 0) {
+    const struct tm *t = localtime(&td.lastUpdated);
+    snprintf(ts, sizeof(ts), "upd %02d:%02d %s", t->tm_hour, t->tm_min,
+             td.lastOk ? "OK" : "FAIL");
+  } else {
+    snprintf(ts, sizeof(ts), "upd --:--");
+  }
+  tft.setTextColor(td.lastOk ? ST7735_GREEN : ST7735_RED);
+  tft.setCursor(2, 150);
+  tft.print(ts);
+
+  ui_screen_tag(3, 9);
 }
 
 // Geofence alert overlay: incident details in a bordered box until dismissed.

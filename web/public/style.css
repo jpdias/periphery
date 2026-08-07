@@ -1,0 +1,228 @@
+:root {
+  --bg: #0d1117;
+  --card: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #40c4ff;
+  --warn: #f4b942;
+  --danger: #ff6b6b;
+  --ok: #3fb950;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: rgba(13, 17, 23, 0.92);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+}
+
+.brand { font-size: 22px; font-weight: 800; letter-spacing: 0.5px; }
+.brand .accent { color: var(--accent); }
+
+.status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.status .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--muted);
+}
+.status.ok .dot { background: var(--ok); }
+.status.err .dot { background: var(--danger); }
+
+.icon-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 38px; height: 38px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--accent); }
+
+.grid {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.card-title .sub { font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* Clock */
+.clock-card { align-items: center; justify-content: center; text-align: center; grid-column: span 2; }
+.clock-time {
+  font-size: clamp(52px, 8vw, 96px);
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+.clock-date { color: var(--muted); font-size: 16px; }
+.moon { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.moon-phase {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f8f8f2, #d4d0c0 60%, #8b8877);
+  box-shadow: 0 0 18px rgba(248, 248, 242, 0.35);
+}
+.moon-label { color: var(--muted); font-size: 13px; }
+
+/* Weather */
+.weather-main { display: flex; align-items: center; gap: 16px; }
+.weather-icon { font-size: 52px; line-height: 1; }
+.weather-temp { font-size: 48px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.weather-sub { color: var(--muted); font-size: 14px; }
+.weather-sub div { padding: 2px 0; }
+
+/* Forecast */
+.forecast-row { display: flex; gap: 12px; justify-content: space-between; }
+.forecast-day { flex: 1; text-align: center; padding: 10px 6px; border-radius: 8px; background: rgba(255,255,255,0.03); }
+.forecast-day .day { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.forecast-day .ic { font-size: 26px; margin: 6px 0; }
+.forecast-day .lo { color: var(--muted); font-size: 12px; }
+.forecast-day .hi { font-size: 16px; font-weight: 600; }
+
+/* Incidents */
+.incident-alerts { display: flex; flex-wrap: wrap; gap: 8px; }
+.alert-chip {
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.incident-list { list-style: none; }
+.incident-list li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.incident-list li:last-child { border-bottom: none; }
+.incident-list .dst { color: var(--muted); font-size: 12px; }
+.incident-list .con { color: var(--accent); font-weight: 600; }
+.incident-list .when { color: var(--muted); font-size: 12px; }
+
+/* Trains */
+.train-list { list-style: none; }
+.train-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.train-list li:last-child { border-bottom: none; }
+.train-list .time { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.train-list .dest { flex: 1; }
+.train-list .dest b { display: block; font-size: 14px; }
+.train-list .dest span { color: var(--muted); font-size: 12px; }
+.delay { color: var(--warn); font-size: 12px; font-weight: 600; }
+
+/* Flights */
+.flight-list { list-style: none; }
+.flight-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.flight-list li:last-child { border-bottom: none; }
+.flight-list .callsign { font-weight: 700; color: var(--accent); font-family: ui-monospace, monospace; }
+.flight-list .meta { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+
+/* System */
+.sys-row { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; }
+.sys-row span:first-child { color: var(--muted); }
+.sys-row span:last-child { text-align: right; }
+
+/* Modal */
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  padding: 20px;
+}
+.modal.hidden { display: none; }
+.modal-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal-box h2 { font-size: 18px; }
+.modal-box label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.modal-box input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 15px;
+}
+.modal-box input:focus { outline: none; border-color: var(--accent); }
+.btn-row { display: flex; gap: 10px; margin-top: 6px; }
+.btn-row button {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-row button.primary { background: var(--accent); border-color: var(--accent); color: #06212e; font-weight: 700; }
+.btn-row button:hover { filter: brightness(1.15); }
+
+.empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; padding: 12px; }
+  .clock-card { grid-column: span 1; }
+  .clock-time { font-size: 64px; }
+}

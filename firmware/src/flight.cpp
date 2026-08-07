@@ -2,6 +2,7 @@
 #include "flight.h"
 #include "config.h"
 #include "env.h"
+#include "netproxy.h"
 #include "tlslock.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -9,8 +10,8 @@
 
 static const char* FL_HOST = FLIGHT_HOST;
 static const uint16_t FL_PORT = 443;
-static const unsigned long FL_INTERVAL = 15000;  // 15s refresh (TLS is heap-heavy)
-static const uint32_t FL_MIN_HEAP = 22000;       // skip fetch if heap too low for TLS+JSON
+static const unsigned long FL_INTERVAL = 30000;  // 30s refresh (TLS is heap-heavy)
+static const uint32_t FL_MIN_HEAP = 8192;           // streaming parse: ~5-6KB contiguous is enough
 
 static FlightData gData;
 static bool gUpdated = false;
@@ -99,11 +100,30 @@ static void classify(const char *cat, long dbFlags, char *out) {
   strcpy(out, "CIV");
 }
 
+// Build the ADS-B request for the configured location/range. In direct mode the
+// host is opendata.adsb.fi and the path is /api/v2/lat/..; in proxy mode it's
+// /api/flights?lat=..&lon=..&dist=..
+static bool flight_request(String &host, String &url) {
+  if (proxy_enabled()) {
+    host = proxy_host();
+    String q = "lat=" + String(cfg.lat, 4) +
+               "&lon=" + String(cfg.lon, 4) +
+               "&dist=" + String(cfg.flight_range);
+    url = proxy_path("flights", q);
+  } else {
+    host = FL_HOST;
+    url = String("/api/v2/lat/") + String(cfg.lat, 4) +
+          "/lon/" + String(cfg.lon, 4) +
+          "/dist/" + String(cfg.flight_range);
+  }
+  return true;
+}
+
 // Parse straight from the TLS stream so we never buffer the whole body.
 // The filter drops every field we don't need, keeping the working doc tiny.
 static void parse(Stream &s) {
-  StaticJsonDocument<192> filter;
-  JsonObject fac = filter["aircraft"].createNestedObject();
+  JsonDocument filter;
+  JsonObject fac = filter["aircraft"].add<JsonObject>();
   fac["flight"] = true;
   fac["alt_baro"] = true;
   fac["track"] = true;
@@ -112,7 +132,7 @@ static void parse(Stream &s) {
   fac["category"] = true;   // ADS-B emitter category (A1..A7, B1..)
   fac["dbFlags"] = true;    // bit 0 = military
 
-  DynamicJsonDocument doc(3072);
+  JsonDocument doc;
   DeserializationError err =
       deserializeJson(doc, s, DeserializationOption::Filter(filter));
   if (err) { mlog.printf("[FLT] parse err %s\n", err.c_str()); gData.valid = false; return; }
@@ -191,14 +211,15 @@ void flight_tick() {
       break;
 
     case P_CONN:
-      if (cli->connect(FL_HOST, FL_PORT)) {
-        String url = String("/api/v2/lat/") + String(cfg.lat, 4) +
-                     "/lon/" + String(cfg.lon, 4) +
-                     "/dist/" + String(cfg.flight_range);
-        cli->print(String("GET ") + url + " HTTP/1.1\r\n" +
-                   "Host: " + FL_HOST + "\r\n" +
-                   "User-Agent: miniDash\r\n" +
-                   "Connection: close\r\n\r\n");
+      if (cli->connect(proxy_enabled() ? proxy_host() : FL_HOST, FL_PORT)) {
+        String host, url;
+        flight_request(host, url);
+        String req = String("GET ") + url + " HTTP/1.1\r\n" +
+                     "Host: " + host + "\r\n" +
+                     "User-Agent: miniDash\r\n";
+        if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+        req += "Connection: close\r\n\r\n";
+        cli->print(req);
         phase = P_WAIT;
         timer = millis();
       } else if (millis() - timer > 8000) {
@@ -248,15 +269,17 @@ bool flight_fetch_blocking(unsigned long timeoutMs) {
   c->setBufferSizes(4096, 512);
   c->setTimeout(3000);
 
-  String url = String("/api/v2/lat/") + String(cfg.lat, 4) +
-               "/lon/" + String(cfg.lon, 4) +
-               "/dist/" + String(cfg.flight_range);
+  String host = proxy_enabled() ? String(proxy_host()) : String(FL_HOST);
   bool ok = false;
-  if (c->connect(FL_HOST, FL_PORT)) {
-    c->print(String("GET ") + url + " HTTP/1.1\r\n" +
-             "Host: " + FL_HOST + "\r\n" +
-             "User-Agent: miniDash\r\n" +
-             "Connection: close\r\n\r\n");
+  if (c->connect(host.c_str(), FL_PORT)) {
+    String url;
+    flight_request(host, url);
+    String req = String("GET ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "User-Agent: miniDash\r\n";
+    if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+    req += "Connection: close\r\n\r\n";
+    c->print(req);
     // Wait for the body, then parse straight from the stream.
     unsigned long t0 = millis();
     while (millis() - t0 < timeoutMs) {

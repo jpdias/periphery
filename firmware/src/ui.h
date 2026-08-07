@@ -3,6 +3,7 @@
 #include "nettime.h"
 #include "flight.h"
 #include "incidents.h"
+#include "trains.h"
 
 void ui_begin();
 void ui_poweroff();
@@ -42,6 +43,7 @@ uint16_t ui_flight_tag_color(const char *tag);
 void ui_draw_flightinfo(const FlightData &fd);   // closest-flight box on Clock screen
 void ui_screen_system(int rssi, String intIp, unsigned long uptime);
 void ui_system_update(int rssi, unsigned long uptime);   // refresh dynamic values
+void ui_screen_trains();   // IP departures from the configured station (screen 3)
 
 // legacy/combined (still referenced)
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,

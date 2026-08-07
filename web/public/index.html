@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d1117">
+  <meta name="description" content="miniDash — live dashboard of weather, incidents, trains, flights and moon phase.">
+  <title>miniDash</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230d1117'/><circle cx='50' cy='50' r='30' fill='none' stroke='%2340c4ff' stroke-width='8'/><circle cx='50' cy='20' r='10' fill='%23f4b942'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">mini<span class="accent">Dash</span></div>
+    <div class="status" id="status">
+      <span class="dot"></span><span id="status-text">loading…</span>
+    </div>
+    <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <main class="grid" id="grid">
+    <!-- Clock -->
+    <section class="card clock-card" data-widget="clock">
+      <div class="clock-time" id="clock-time">--:--</div>
+      <div class="clock-date" id="clock-date"></div>
+      <div class="moon" id="moon">
+        <div class="moon-phase" id="moon-phase"></div>
+        <div class="moon-label">moon</div>
+      </div>
+    </section>
+
+    <!-- Weather -->
+    <section class="card weather-card" data-widget="weather">
+      <h2 class="card-title">Weather</h2>
+      <div class="weather-main">
+        <div class="weather-icon" id="weather-icon">—</div>
+        <div class="weather-temp" id="weather-temp">--°</div>
+      </div>
+      <div class="weather-sub" id="weather-sub"></div>
+    </section>
+
+    <!-- Forecast -->
+    <section class="card forecast-card" data-widget="forecast">
+      <h2 class="card-title">Forecast</h2>
+      <div class="forecast-row" id="forecast-row"></div>
+    </section>
+
+    <!-- Incidents -->
+    <section class="card incidents-card" data-widget="incidents">
+      <h2 class="card-title">Incidents</h2>
+      <div class="incident-alerts" id="incident-alerts"></div>
+      <ul class="incident-list" id="incident-list"></ul>
+    </section>
+
+    <!-- Trains -->
+    <section class="card trains-card" data-widget="trains">
+      <h2 class="card-title">Trains <span class="sub" id="train-station"></span></h2>
+      <ul class="train-list" id="train-list"></ul>
+    </section>
+
+    <!-- Flights -->
+    <section class="card flights-card" data-widget="flights">
+      <h2 class="card-title">Flights <span class="sub" id="flight-count"></span></h2>
+      <ul class="flight-list" id="flight-list"></ul>
+    </section>
+
+    <!-- System -->
+    <section class="card system-card" data-widget="system">
+      <h2 class="card-title">System</h2>
+      <div class="sys-row"><span>Location</span><span id="sys-loc">—</span></div>
+      <div class="sys-row"><span>IP</span><span id="sys-ip">—</span></div>
+      <div class="sys-row"><span>Updated</span><span id="sys-updated">—</span></div>
+    </section>
+  </main>
+
+  <!-- Settings modal -->
+  <div class="modal hidden" id="settings-modal">
+    <div class="modal-box">
+      <h2>Settings</h2>
+      <label>Latitude
+        <input type="number" step="any" id="cfg-lat" placeholder="41.17">
+      </label>
+      <label>Longitude
+        <input type="number" step="any" id="cfg-lon" placeholder="-8.43">
+      </label>
+      <label>Flight range (nm)
+        <input type="number" step="1" id="cfg-range" value="25">
+      </label>
+      <label>IP station ID (trains)
+        <input type="text" id="cfg-station" placeholder="9402006">
+      </label>
+      <label>IP station name
+        <input type="text" id="cfg-station-name" placeholder="PORTO-CAMPANHA">
+      </label>
+      <div class="btn-row">
+        <button id="loc-btn">Use my location</button>
+        <button id="save-btn" class="primary">Save</button>
+        <button id="cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

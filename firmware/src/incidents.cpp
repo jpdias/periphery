@@ -3,6 +3,7 @@
 #include "config.h"
 #include "env.h"
 #include "nettime.h"
+#include "netproxy.h"
 #include "tlslock.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -13,7 +14,7 @@ static const char* INC_PATH = INCIDENTS_PATH;
 static const uint16_t INC_PORT = 443;
 static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is heap-heavy)
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
-static const uint32_t INC_MIN_HEAP = 16000;        // skip fetch if heap too low
+static const uint32_t INC_MIN_HEAP = 8192;          // streaming parse: ~5-6KB contiguous is enough
 
 static IncidentData gData;
 static bool gUpdated = false;
@@ -154,7 +155,7 @@ static int insert_sorted(Incident *arr, int n, const Incident &a) {
 static void parse(Stream &s) {
   // ArduinoJson v6 filter for an array of objects: index [0] wildcards all
   // elements (createNestedObject() matches nothing on v6).
-  StaticJsonDocument<512> filter;
+  JsonDocument filter;
   JsonObject ffeat = filter["features"][0].to<JsonObject>();
   JsonObject fprop = ffeat["properties"].to<JsonObject>();
   fprop["ID_oc"] = true;
@@ -165,7 +166,7 @@ static void parse(Stream &s) {
   fprop["DataInicioOcorrencia"] = true;
   ffeat["geometry"]["coordinates"] = true;
 
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   DeserializationError err =
       deserializeJson(doc, s, DeserializationOption::Filter(filter));
   if (err) { mlog.printf("[INC] parse err %s\n", err.c_str()); gData.valid = false; return; }
@@ -213,26 +214,34 @@ static bool skip_headers(Stream &s) {
   return false;
 }
 
-// The incidents within INCIDENT_RADIUS_M of the configured location, trimmed
-// server-side with a spatial filter so the payload stays tiny for the ESP8266
-// (avoids exceededTransferLimit too). Result order is by DataOcorrencia DESC.
-static String inc_query() {
+// Build the incidents request. Direct mode: the full ArcGIS FeatureServer query
+// (spatial filter server-side so the payload stays tiny for the ESP8266). Proxy
+// mode: /api/incidents?lat=..&lon=.. (the function applies the same filter via
+// its ARC_GIS_URL env var). Returns host + URL.
+static void inc_request(String &host, String &url) {
   char ll[40];
   snprintf(ll, sizeof(ll), "%.6f,%.6f", cfg.lon, cfg.lat);
-  String q = String(INC_PATH)
-    + "?where=1%3D1"
-    + "&outFields=ID_oc%2CNatureza%2CEstadoOcorrencia%2CConcelho%2CLocalidade%2CDataInicioOcorrencia%2CDataOcorrencia"
-    + "&geometry=" + ll
-    + "&geometryType=esriGeometryPoint"
-    + "&inSR=4326"
-    + "&distance=" + String(INCIDENT_RADIUS_M)
-    + "&units=esriSRUnit_Meter"
-    + "&spatialRel=esriSpatialRelIntersects"
-    + "&orderByFields=DataOcorrencia%20DESC"
-    + "&resultRecordCount=" + String(INCIDENT_MAX)
-    + "&f=geojson"
-    + "&outSR=4326";
-  return q;
+  if (proxy_enabled()) {
+    host = proxy_host();
+    String q = "lat=" + String(cfg.lat, 4) +
+               "&lon=" + String(cfg.lon, 4);
+    url = proxy_path("incidents", q);
+  } else {
+    host = INC_HOST;
+    url = String(INC_PATH)
+      + "?where=1%3D1"
+      + "&outFields=ID_oc%2CNatureza%2CEstadoOcorrencia%2CConcelho%2CLocalidade%2CDataInicioOcorrencia%2CDataOcorrencia"
+      + "&geometry=" + ll
+      + "&geometryType=esriGeometryPoint"
+      + "&inSR=4326"
+      + "&distance=" + String(INCIDENT_RADIUS_M)
+      + "&units=esriSRUnit_Meter"
+      + "&spatialRel=esriSpatialRelIntersects"
+      + "&orderByFields=DataOcorrencia%20DESC"
+      + "&resultRecordCount=" + String(INCIDENT_MAX)
+      + "&f=geojson"
+      + "&outSR=4326";
+  }
 }
 
 void incidents_tick() {
@@ -273,11 +282,15 @@ void incidents_tick() {
       break;
 
     case P_CONN:
-      if (cli->connect(INC_HOST, INC_PORT)) {
-        cli->print(String("GET ") + inc_query() + " HTTP/1.1\r\n" +
-                   "Host: " + INC_HOST + "\r\n" +
-                   "User-Agent: miniDash\r\n" +
-                   "Connection: close\r\n\r\n");
+      if (cli->connect(proxy_enabled() ? proxy_host() : INC_HOST, INC_PORT)) {
+        String host, url;
+        inc_request(host, url);
+        String req = String("GET ") + url + " HTTP/1.1\r\n" +
+                     "Host: " + host + "\r\n" +
+                     "User-Agent: miniDash\r\n";
+        if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+        req += "Connection: close\r\n\r\n";
+        cli->print(req);
         phase = P_WAIT;
         timer = millis();
       } else if (millis() - timer > 8000) {
@@ -328,13 +341,17 @@ bool incidents_fetch_blocking(unsigned long timeoutMs) {
   c->setBufferSizes(4096, 512);
   c->setTimeout(3000);
 
-  String url = inc_query();
+  String host = proxy_enabled() ? String(proxy_host()) : String(INC_HOST);
   bool ok = false;
-  if (c->connect(INC_HOST, INC_PORT)) {
-    c->print(String("GET ") + url + " HTTP/1.1\r\n" +
-             "Host: " + INC_HOST + "\r\n" +
-             "User-Agent: miniDash\r\n" +
-             "Connection: close\r\n\r\n");
+  if (c->connect(host.c_str(), INC_PORT)) {
+    String url;
+    inc_request(host, url);
+    String req = String("GET ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "User-Agent: miniDash\r\n";
+    if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+    req += "Connection: close\r\n\r\n";
+    c->print(req);
     // Wait for the body, then parse straight from the stream.
     unsigned long t0 = millis();
     while (millis() - t0 < timeoutMs) {

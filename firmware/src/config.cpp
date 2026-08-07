@@ -34,7 +34,7 @@ static void apply_defaults() {
 static bool load_json() {
   File f = LittleFS.open(CONFIG_PATH, "r");
   if (!f) return false;
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) { mlog.printf("[CFG] json parse error: %s\n", err.c_str()); return false; }
@@ -53,6 +53,10 @@ static bool load_json() {
   cfg.night_start = doc["night_start"] | 23;
   cfg.night_end = doc["night_end"] | 7;
   cfg.flight_range = doc["flight_range"] | 25;
+  strncpy(cfg.ip_station, doc["ip_station"] | "", sizeof(cfg.ip_station) - 1);
+  strncpy(cfg.ip_station_name, doc["ip_station_name"] | "", sizeof(cfg.ip_station_name) - 1);
+  strncpy(cfg.api_base, doc["api_base"] | "", sizeof(cfg.api_base) - 1);
+  cfg.use_api_proxy = doc["use_api_proxy"] | false;
   cfg.backlight_control = doc["backlight_control"] | true;
   cfg.backlight_active_high = doc["backlight_active_high"] | true;
   JsonArray scr = doc["screens"];
@@ -120,7 +124,7 @@ void config_load() {
 }
 
 void config_save() {
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   doc["wifi_ssid"] = cfg.wifi_ssid;
   doc["wifi_pass"] = cfg.wifi_pass;
   doc["lat"] = cfg.lat;
@@ -135,11 +139,15 @@ void config_save() {
   doc["night_start"] = cfg.night_start;
   doc["night_end"] = cfg.night_end;
   doc["flight_range"] = cfg.flight_range;
+  doc["ip_station"] = cfg.ip_station;
+  doc["ip_station_name"] = cfg.ip_station_name;
+  doc["api_base"] = cfg.api_base;
+  doc["use_api_proxy"] = cfg.use_api_proxy;
   doc["backlight_control"] = cfg.backlight_control;
   doc["backlight_active_high"] = cfg.backlight_active_high;
-  JsonArray scr = doc.createNestedArray("screens");
+  JsonArray scr = doc["screens"].to<JsonArray>();
   for (int i = 0; i < SCREEN_MAX; i++) scr.add(cfg.screen_enabled[i]);
-  JsonArray mons = doc.createNestedArray("monitors");
+  JsonArray mons = doc["monitors"].to<JsonArray>();
   for (int i = 0; i < MONITOR_MAX; i++) {
     if (cfg.monitors[i][0]) mons.add(cfg.monitors[i]);
   }
@@ -158,7 +166,7 @@ void config_reset() {
 }
 
 String config_to_json() {
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   doc["wifi_ssid"] = cfg.wifi_ssid;
   doc["wifi_pass"] = cfg.wifi_pass;
   doc["lat"] = cfg.lat;
@@ -173,11 +181,15 @@ String config_to_json() {
   doc["night_start"] = cfg.night_start;
   doc["night_end"] = cfg.night_end;
   doc["flight_range"] = cfg.flight_range;
+  doc["ip_station"] = cfg.ip_station;
+  doc["ip_station_name"] = cfg.ip_station_name;
+  doc["api_base"] = cfg.api_base;
+  doc["use_api_proxy"] = cfg.use_api_proxy;
   doc["backlight_control"] = cfg.backlight_control;
   doc["backlight_active_high"] = cfg.backlight_active_high;
-  JsonArray scr = doc.createNestedArray("screens");
+  JsonArray scr = doc["screens"].to<JsonArray>();
   for (int i = 0; i < SCREEN_MAX; i++) scr.add(cfg.screen_enabled[i]);
-  JsonArray mons = doc.createNestedArray("monitors");
+  JsonArray mons = doc["monitors"].to<JsonArray>();
   for (int i = 0; i < MONITOR_MAX; i++)
     if (cfg.monitors[i][0]) mons.add(cfg.monitors[i]);
   String s;
@@ -229,41 +241,45 @@ bool config_apply_json(const String &body, String &err) {
   // Work on a throwaway copy so a bad payload never mutates the live config.
   Config next = cfg;
 
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   DeserializationError derr = deserializeJson(doc, body.c_str());
   if (derr) { err = String("JSON parse error: ") + derr.c_str(); return false; }
   if (!doc.is<JsonObject>()) { err = "Top-level JSON must be an object"; return false; }
 
   // Strings: length-capped, unknown keys ignored.
-  if (doc.containsKey("wifi_ssid"))   copy_capped(next.wifi_ssid,   sizeof(next.wifi_ssid),   doc["wifi_ssid"],   "");
-  if (doc.containsKey("wifi_pass"))   copy_capped(next.wifi_pass,   sizeof(next.wifi_pass),   doc["wifi_pass"],   "");
-  if (doc.containsKey("tz"))          copy_capped(next.tz,          sizeof(next.tz),          doc["tz"],          "Europe/Lisbon");
-  if (doc.containsKey("hostname")) {
+  if (doc["wifi_ssid"].isNull() == false)   copy_capped(next.wifi_ssid,   sizeof(next.wifi_ssid),   doc["wifi_ssid"],   "");
+  if (doc["wifi_pass"].isNull() == false)   copy_capped(next.wifi_pass,   sizeof(next.wifi_pass),   doc["wifi_pass"],   "");
+  if (doc["tz"].isNull() == false)          copy_capped(next.tz,          sizeof(next.tz),          doc["tz"],          "Europe/Lisbon");
+  if (doc["hostname"].isNull() == false) {
     // Reuse the DNS-label sanitizer via portal is awkward here; do a minimal safe
     // copy and let portal's sanitize_hostname handle the canonical form later.
     copy_capped(next.hostname, sizeof(next.hostname), doc["hostname"], "minidash");
   }
-  if (doc.containsKey("esphome_host"))   copy_capped(next.esphome_host, sizeof(next.esphome_host), doc["esphome_host"], "");
-  if (doc.containsKey("esphome_sensors")) copy_capped(next.esphome_sensors, sizeof(next.esphome_sensors), doc["esphome_sensors"], "");
+  if (doc["esphome_host"].isNull() == false)   copy_capped(next.esphome_host, sizeof(next.esphome_host), doc["esphome_host"], "");
+  if (doc["esphome_sensors"].isNull() == false) copy_capped(next.esphome_sensors, sizeof(next.esphome_sensors), doc["esphome_sensors"], "");
 
   // Floats: range-clamped. (jnum accepts numbers or numeric strings.)
-  if (doc.containsKey("lat")) next.lat = clampf(jnum(doc["lat"], cfg.lat), -90.0f, 90.0f, cfg.lat);
-  if (doc.containsKey("lon")) next.lon = clampf(jnum(doc["lon"], cfg.lon), -180.0f, 180.0f, cfg.lon);
+  if (doc["lat"].isNull() == false) next.lat = clampf(jnum(doc["lat"], cfg.lat), -90.0f, 90.0f, cfg.lat);
+  if (doc["lon"].isNull() == false) next.lon = clampf(jnum(doc["lon"], cfg.lon), -180.0f, 180.0f, cfg.lon);
 
   // Ints: range-clamped. (jint accepts numbers or numeric strings.)
-  if (doc.containsKey("weather_interval")) next.weather_interval = clampi(jint(doc["weather_interval"], cfg.weather_interval), 60, 86400, cfg.weather_interval);
-  if (doc.containsKey("ntp_interval_min"))  next.ntp_interval_min  = clampi(jint(doc["ntp_interval_min"], cfg.ntp_interval_min), 1, 1440, cfg.ntp_interval_min);
-  if (doc.containsKey("night_start"))       next.night_start       = clampi(jint(doc["night_start"], cfg.night_start), 0, 23, cfg.night_start);
-  if (doc.containsKey("night_end"))         next.night_end         = clampi(jint(doc["night_end"], cfg.night_end), 0, 23, cfg.night_end);
-  if (doc.containsKey("flight_range"))      next.flight_range      = clampi(jint(doc["flight_range"], cfg.flight_range), 0, 250, cfg.flight_range);
+  if (doc["weather_interval"].isNull() == false) next.weather_interval = clampi(jint(doc["weather_interval"], cfg.weather_interval), 60, 86400, cfg.weather_interval);
+  if (doc["ntp_interval_min"].isNull() == false)  next.ntp_interval_min  = clampi(jint(doc["ntp_interval_min"], cfg.ntp_interval_min), 1, 1440, cfg.ntp_interval_min);
+  if (doc["night_start"].isNull() == false)       next.night_start       = clampi(jint(doc["night_start"], cfg.night_start), 0, 23, cfg.night_start);
+  if (doc["night_end"].isNull() == false)         next.night_end         = clampi(jint(doc["night_end"], cfg.night_end), 0, 23, cfg.night_end);
+  if (doc["flight_range"].isNull() == false)      next.flight_range      = clampi(jint(doc["flight_range"], cfg.flight_range), 0, 250, cfg.flight_range);
+  if (doc["ip_station"].isNull() == false)        copy_capped(next.ip_station, sizeof(next.ip_station), doc["ip_station"], "");
+  if (doc["ip_station_name"].isNull() == false)   copy_capped(next.ip_station_name, sizeof(next.ip_station_name), doc["ip_station_name"], "");
+  if (doc["api_base"].isNull() == false)          copy_capped(next.api_base, sizeof(next.api_base), doc["api_base"], "");
 
   // Bools.
-  if (doc.containsKey("show_metrics"))         next.show_metrics         = (jint(doc["show_metrics"], cfg.show_metrics ? 1 : 0) != 0);
-  if (doc.containsKey("backlight_control"))    next.backlight_control    = doc["backlight_control"] | cfg.backlight_control;
-  if (doc.containsKey("backlight_active_high")) next.backlight_active_high = doc["backlight_active_high"] | cfg.backlight_active_high;
+  if (doc["show_metrics"].isNull() == false)         next.show_metrics         = (jint(doc["show_metrics"], cfg.show_metrics ? 1 : 0) != 0);
+  if (doc["use_api_proxy"].isNull() == false)        next.use_api_proxy        = (jint(doc["use_api_proxy"], cfg.use_api_proxy ? 1 : 0) != 0);
+  if (doc["backlight_control"].isNull() == false)    next.backlight_control    = doc["backlight_control"] | cfg.backlight_control;
+  if (doc["backlight_active_high"].isNull() == false) next.backlight_active_high = doc["backlight_active_high"] | cfg.backlight_active_high;
 
   // Screens array: bounded to SCREEN_MAX, defaults true if missing.
-  if (doc.containsKey("screens")) {
+  if (doc["screens"].isNull() == false) {
     JsonArray scr = doc["screens"];
     if (!scr.isNull()) {
       for (int i = 0; i < SCREEN_MAX; i++) next.screen_enabled[i] = true;
@@ -283,7 +299,7 @@ bool config_apply_json(const String &body, String &err) {
     if (h.length() == 0 || h.length() >= MONITOR_LEN) return;  // skip empty / too long
     strncpy(next.monitors[mi++], h.c_str(), MONITOR_LEN - 1);
   };
-  if (doc.containsKey("monitors")) {
+  if (doc["monitors"].isNull() == false) {
     JsonVariant mv = doc["monitors"];
     if (mv.is<JsonArray>()) { for (JsonVariant v : mv.as<JsonArray>()) add_mon(v.as<const char*>()); }
     else if (mv.is<const char*>()) {
