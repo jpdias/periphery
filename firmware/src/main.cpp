@@ -10,6 +10,7 @@
 #include "flight.h"
 #include "incidents.h"
 #include "moon.h"
+#include "trains.h"
 #include "control.h"
 
 #define BTN_PIN D3
@@ -26,7 +27,7 @@ volatile bool btnToggle = false;
 bool screenOn = true;
 bool drawnStatic = false;
 int screenIndex = 0;          // 0..N -> screens 1..N+1
-const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system info
+const int SCREEN_COUNT = 9;   // 0 clock, 1 incidents, 2 trains, 7 flight radar, 8 system
 
 // Geofence popup state: opens when an incident enters the radius, stays up for
 // POPUP_MS or until a short button press dismisses it. Dismissals are in-RAM
@@ -86,13 +87,13 @@ static void display_set(bool on) {
 // ---- Control API (shared by button, scheduler, and web/REST) ----------------
 
 static const char* SCREEN_NAMES[SCREEN_COUNT] = {
-  "Clock", "Incidents", "ESPHome", "Forecast", "Weather Detail", "Monitors", "Flight Radar", "System"
+  "Clock", "Incidents", "Trains", "ESPHome", "Forecast", "Weather Detail", "Monitors", "Flight Radar", "System"
 };
 
 bool control_screen_enabled(int idx) {
   if (idx < 0 || idx >= SCREEN_COUNT) return false;
   if (!cfg.screen_enabled[idx]) return false;
-  if (idx == 6 && cfg.flight_range <= 0) return false;  // flight radar off when range 0
+  if (idx == 7 && cfg.flight_range <= 0) return false;  // flight radar off when range 0
   return true;
 }
 
@@ -146,6 +147,23 @@ void IRAM_ATTR btn_isr() {
   }
 }
 
+// Let freed TLS buffers coalesce before the next blocking boot fetch, so a later
+// TLS session (trains needs the most contiguous heap for its ~11KB body) never
+// starts from a badly-fragmented heap. Polls until the largest free block is
+// back above the fetchers' own gate, or the timeout expires.
+static void boot_heap_settle(unsigned long timeoutMs) {
+  unsigned long t0 = millis();
+  unsigned long best = ESP.getMaxFreeBlockSize();
+  while (ESP.getMaxFreeBlockSize() < 12000 && millis() - t0 < timeoutMs) {
+    ESP.wdtFeed(); portal_handle(); time_tick();
+    delay(20);
+    if (ESP.getMaxFreeBlockSize() > best) best = ESP.getMaxFreeBlockSize();
+  }
+  mlog.printf("[BOOT] settle free=%u maxblk=%u best=%u\n",
+              (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxFreeBlockSize(),
+              (unsigned)best);
+}
+
 void setup() {
   Serial.begin(115200);
   mlog.println("\nBooting miniDash...");
@@ -181,12 +199,14 @@ void setup() {
    monitors_begin();
    flight_begin();
    incidents_begin();
+   trains_begin();
    moon_begin();
 
    // Land on the first enabled screen (fall back to Clock if none enabled).
    screenIndex = 0;
    for (int i = 0; i < SCREEN_COUNT; i++) {
-     bool disabled = !cfg.screen_enabled[i] || (i == 6 && cfg.flight_range <= 0);
+     bool disabled = !cfg.screen_enabled[i] ||
+                     (i == 7 && cfg.flight_range <= 0);
      if (!disabled) { screenIndex = i; break; }
    }
 
@@ -221,26 +241,37 @@ void setup() {
    ui_boot_step(2, "Forecast", net_forecast().valid ? BOOT_DONE : BOOT_FAIL);
    netfsm_mark_forecast_fresh();   // boot already fetched forecast; don't refetch now
 
-   // 2) Moon (TLS) — first TLS use, so it runs alone. Deterministic + blocking.
-   ui_boot_step(3, "Sun / Moon", BOOT_WAIT);
-   bool moonOk = moon_fetch_blocking(12000);
-   ui_boot_step(3, "Sun / Moon", moonOk ? BOOT_DONE : BOOT_FAIL);
+    // 2) Moon (TLS) — first TLS use, so it runs alone. Deterministic + blocking.
+    ui_boot_step(3, "Sun / Moon", BOOT_WAIT);
+    bool moonOk = moon_fetch_blocking(12000);
+    ui_boot_step(3, "Sun / Moon", moonOk ? BOOT_DONE : BOOT_FAIL);
+    boot_heap_settle(5000);
 
-   // 3) Flight radar first fetch (TLS) — moon has released the lock by now.
-   if (cfg.flight_range > 0) {
-     ui_boot_step(4, "Flight radar", BOOT_WAIT);
-     bool flOk = flight_fetch_blocking(12000);
-     ui_boot_step(4, "Flight radar", flOk ? BOOT_DONE : BOOT_FAIL);
-   }
+    // 3) Trains first fetch (TLS) — runs first of the TLS fetches so it gets the
+    //    freshest heap (its ~11KB body needs the most contiguous memory).
+    {
+      ui_boot_step(4, "Trains", BOOT_WAIT);
+      bool trnOk = trains_fetch_blocking(15000);
+      ui_boot_step(4, "Trains", trnOk ? BOOT_DONE : BOOT_FAIL);
+    }
+    boot_heap_settle(5000);
 
-   // 4) Incidents first fetch (TLS) — flight has released the lock by now.
-   if (cfg.screen_enabled[1]) {
-     ui_boot_step(5, "Incidents", BOOT_WAIT);
-     bool incOk = incidents_fetch_blocking(12000);
-     ui_boot_step(5, "Incidents", incOk ? BOOT_DONE : BOOT_FAIL);
-   }
+    // 4) Flight radar first fetch (TLS) — trains has released the lock by now.
+    if (cfg.flight_range > 0) {
+      ui_boot_step(5, "Flight radar", BOOT_WAIT);
+      bool flOk = flight_fetch_blocking(12000);
+      ui_boot_step(5, "Flight radar", flOk ? BOOT_DONE : BOOT_FAIL);
+    }
+    boot_heap_settle(5000);
 
-   ui_boot_step(6, "Ready", BOOT_DONE);
+    // 5) Incidents first fetch (TLS) — flight has released the lock by now.
+    if (cfg.screen_enabled[1]) {
+      ui_boot_step(6, "Incidents", BOOT_WAIT);
+      bool incOk = incidents_fetch_blocking(12000);
+      ui_boot_step(6, "Incidents", incOk ? BOOT_DONE : BOOT_FAIL);
+    }
+
+    ui_boot_step(7, "Ready", BOOT_DONE);
    mlog.println("[BOOT] sequence complete");
    delay(600);
 }
@@ -258,21 +289,24 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
       ui_screen_incidents();
       break;
     case 2:
-      ui_screen_esphome();
+      ui_screen_trains();
       break;
     case 3:
-      ui_screen_forecast(h, m, s, forecast);
+      ui_screen_esphome();
       break;
     case 4:
-      ui_screen_detail(h, m, s, weather);
+      ui_screen_forecast(h, m, s, forecast);
       break;
     case 5:
-      ui_screen_monitors();
+      ui_screen_detail(h, m, s, weather);
       break;
     case 6:
-      ui_screen_flight(flight_data(), cfg.flight_range);
+      ui_screen_monitors();
       break;
     case 7:
+      ui_screen_flight(flight_data(), cfg.flight_range);
+      break;
+    case 8:
       ui_screen_system(WiFi.RSSI(), WiFi.localIP().toString(), millis());
       break;
   }
@@ -312,6 +346,7 @@ void loop() {
   monitors_tick();
   flight_tick();
   incidents_tick();
+  trains_tick();
   moon_tick();     // fetches sun/moon data once per local day (heap-guarded)
 
   // --- Button: short press cycles screens, long press toggles the display ---
@@ -410,6 +445,7 @@ void loop() {
   bool ehUpdated = esphome_updated();   // consume flag every loop
   bool flUpdated = flight_updated();    // consume flag every loop
   bool incUpdated = incidents_updated();  // consume flag every loop
+  bool trnUpdated = trains_updated();     // consume flag every loop
   bool mnUpdated = moon_updated();      // consume flag every loop
 
   if (screenOn && ui_is_on() && !popupActive) {
@@ -421,9 +457,10 @@ void loop() {
     if (screenIndex == 0 && m != lastMin) needRedraw = true;
     if (dataUpdated) needRedraw = true;
     if (incUpdated && screenIndex == 1) needRedraw = true;   // incidents live update
-    if (ehUpdated && screenIndex == 2) needRedraw = true;   // ESPHome screen live update
-    if (flUpdated && screenIndex == 6) needRedraw = true;   // flight radar live update
-    if (mnUpdated && screenIndex == 4) needRedraw = true;   // moon data arrived
+    if (trnUpdated && screenIndex == 2) needRedraw = true;   // trains live update
+    if (ehUpdated && screenIndex == 3) needRedraw = true;   // ESPHome screen live update
+    if (flUpdated && screenIndex == 7) needRedraw = true;   // flight radar live update
+    if (mnUpdated && screenIndex == 5) needRedraw = true;   // moon data arrived
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);
@@ -439,13 +476,13 @@ void loop() {
       }
       // Refresh only the flight box when new flight data arrives (no full redraw).
       if (flUpdated) ui_draw_flightinfo(flight_data());
-    } else if (screenIndex == 6) {
+    } else if (screenIndex == 7) {
       // Flight radar: tick the next-refresh countdown once per second.
       if (millis() - lastSec >= 1000) {
         lastSec = millis();
         ui_draw_flight_countdown();
       }
-    } else if (screenIndex == 7) {
+    } else if (screenIndex == 8) {
       // System screen: refresh dynamic values once per second (isolated boxes).
       if (millis() - lastSec >= 1000) {
         lastSec = millis();

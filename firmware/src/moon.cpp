@@ -86,7 +86,7 @@ static float phase_fraction(const char* name, int illum) {
 bool parse_moon_body(const String &body, MoonInfo &out) {
   int brace = body.indexOf('{');
   if (brace < 0) { mlog.println("[MOON] no JSON"); return false; }
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body.c_str() + brace);
   if (err) { mlog.printf("[MOON] parse err: %s\n", err.c_str()); return false; }
 

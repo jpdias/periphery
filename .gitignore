@@ -1,11 +1,21 @@
+# PlatformIO / firmware build
 .pio
 .venv
 .venv-tools
 .vscode
+firmware/.pio
+firmware/.venv
+firmware/.venv-tools
+firmware/.vscode
 
 # Real settings (never commit the real one, only env.example.h)
-src/env.h
+firmware/src/env.h
 
-.vscode/c_cpp_properties.json
-.vscode/launch.json
-.vscode/ipch
+firmware/.vscode/c_cpp_properties.json
+firmware/.vscode/launch.json
+firmware/.vscode/ipch
+
+# Server (Netlify functions / dev server)
+server/node_modules
+server/.netlify
+server/.env

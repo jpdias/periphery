@@ -142,7 +142,7 @@ static String json_only(const String &body) {
 bool parse_weather_body(const String &body, Weather &w) {
   String json = json_only(body);
   if (json.length() == 0) { mlog.println("[WX] no JSON object"); return false; }
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc;
   if (deserializeJson(doc, json.c_str())) { mlog.println("[WX] JSON parse error"); return false; }
   JsonObject cur = doc["current"];
   if (!cur) { mlog.println("[WX] no 'current'"); return false; }
@@ -167,7 +167,7 @@ bool parse_weather_body(const String &body, Weather &w) {
 bool parse_forecast_body(const String &body, Forecast &f) {
   String json = json_only(body);
   if (json.length() == 0) { mlog.println("[FC] no JSON"); return false; }
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   if (deserializeJson(doc, json.c_str())) { mlog.println("[FC] parse error"); return false; }
   JsonObject d = doc["daily"];
   if (!d) { mlog.println("[FC] no daily"); return false; }
@@ -190,9 +190,9 @@ bool parse_extip_body(const String &body, String &ip) {
   String json = json_only(body);
   if (json.length() == 0) { mlog.println("[IP] no JSON"); return false; }
   // Filter to only the "ip" field so buffer size is independent of response size.
-  StaticJsonDocument<32> filter;
+  JsonDocument filter;
   filter["ip"] = true;
-  DynamicJsonDocument doc(128);
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, json.c_str(), DeserializationOption::Filter(filter));
   if (err) { mlog.printf("[IP] parse error: %s\n", err.c_str()); return false; }
   const char* p = doc["ip"] | "";

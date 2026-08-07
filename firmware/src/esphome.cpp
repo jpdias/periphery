@@ -85,7 +85,7 @@ static void start_sensor() {
 
 static void parse_sensor(const String &raw) {
   String j = http_json_body(raw);
-  DynamicJsonDocument doc(512);
+  JsonDocument doc;
   EspHomeState &s = gSensors[ehIdx];
   if (j.length() && !deserializeJson(doc, j.c_str())) {
     char oldState[sizeof(s.state)]; strncpy(oldState, s.state, sizeof(oldState));

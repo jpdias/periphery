@@ -62,6 +62,27 @@
           <button type="button" class="addrow" onclick="addRow('monRows')">+ Add host</button>
           <label for="fr">Flight radar range (nm, 0=off)</label>
           <input id="fr" data-json="flight_range" data-type="num" value="{{ FR }}">
+          <label for="cps">IP station (Trains screen)</label>
+          <div class="row">
+            <input id="cps" data-json="ip_station" value="{{ CPS }}" placeholder="node ID, e.g. 9402006" readonly>
+          </div>
+          <div class="row">
+            <input id="csn" data-json="ip_station_name" value="{{ CSN }}" placeholder="station name (prefill)">
+            <button type="button" class="del" onclick="clearStation()">x</button>
+          </div>
+          <label for="cpsq">Search station by name</label>
+          <div class="row">
+            <input id="cpsq" type="text" placeholder="e.g. Campanhã (accents matter)">
+            <button type="button" onclick="searchStations()">Search</button>
+          </div>
+          <div id="cpsResults" class="stnlist"></div>
+          <label for="apb">API base (Netlify, e.g. https://minidash.netlify.app)</label>
+          <input id="apb" data-json="api_base" value="{{ APB }}" placeholder="https://minidash.netlify.app">
+          <div class="chk">
+            <label class="cb">
+              <input type="checkbox" data-json="use_api_proxy" {{ UAP }}> Use API proxy (route trains / flights / incidents through the API base)
+            </label>
+          </div>
           <label>Enabled screens</label>
           <div class="chk" data-json-array="screens">
             <label class="cb">
@@ -71,22 +92,25 @@
               <input type="checkbox" data-idx="1" {{ SC1 }}> Incidents
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="2" {{ SC2 }}> ESPHome
+              <input type="checkbox" data-idx="2" {{ SC2 }}> Trains
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="3" {{ SC3 }}> Forecast
+              <input type="checkbox" data-idx="3" {{ SC3 }}> ESPHome
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="4" {{ SC4 }}> Weather Detail
+              <input type="checkbox" data-idx="4" {{ SC4 }}> Forecast
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="5" {{ SC5 }}> Monitors
+              <input type="checkbox" data-idx="5" {{ SC5 }}> Weather Detail
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="6" {{ SC6 }}> Flight Radar
+              <input type="checkbox" data-idx="6" {{ SC6 }}> Monitors
             </label>
             <label class="cb">
-              <input type="checkbox" data-idx="7" {{ SC7 }}> System
+              <input type="checkbox" data-idx="7" {{ SC7 }}> Flight Radar
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="8" {{ SC8 }}> System
             </label>
           </div>
           <label>Backlight (transistor on D8)</label>
@@ -144,6 +168,39 @@ function addRow(containerId){
   row.appendChild(inp); row.appendChild(del);
   box.appendChild(row);
 }
+// ---- Station search (device-side proxy, no CORS issues) ----
+function clearStation(){
+  document.getElementById('cps').value='';
+  document.getElementById('csn').value='';
+  document.getElementById('cpsResults').innerHTML='';
+}
+function searchStations(){
+  var q=document.getElementById('cpsq').value.trim();
+  var box=document.getElementById('cpsResults');
+  if(!q){ box.innerHTML='<span class="hint">type a station name first</span>'; return; }
+  box.innerHTML='<span class="hint">searching...</span>';
+  fetch('/api/stations?q='+encodeURIComponent(q))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var arr=d.stations||[];
+      if(!arr.length){ box.innerHTML='<span class="hint">no matches — try accents, e.g. Campanhã</span>'; return; }
+      box.innerHTML='';
+      arr.forEach(function(s){
+        var b=document.createElement('button');
+        b.type='button';
+        b.className='stn';
+        b.textContent=s.name+' ['+s.id+']';
+        b.onclick=function(){
+          document.getElementById('cps').value=s.id;
+          document.getElementById('csn').value=s.name;
+          box.innerHTML='<span class="hint">selected '+s.name+' ['+s.id+'] — click Save &amp; Reboot</span>';
+        };
+        box.appendChild(b);
+      });
+    })
+    .catch(function(err){ box.innerHTML='<span class="cfgmsg">search failed: '+err+'</span>'; });
+}
+document.getElementById('cpsq').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); searchStations(); } });
 setInterval(function(){
   fetch('/logtext').then(function(r){return r.text();}).then(function(t){
     var el=document.getElementById('log');

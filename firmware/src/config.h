@@ -11,7 +11,7 @@
 #define MONITOR_LEN    64
 
 #define ESPHOME_SENSORS_LEN 192
-#define SCREEN_MAX 8   // Clock, Incidents, ESPHome, Forecast, Detail, Monitors, Flight, System
+#define SCREEN_MAX 9   // Clock, Incidents, ESPHome, Forecast, Detail, Monitors, Flight, System, Trains
 
 struct Config {
   char wifi_ssid[33] = {0};
@@ -30,7 +30,11 @@ struct Config {
   int   night_start = 23;         // hour display turns off (== night_end disables)
   int   night_end = 7;            // hour display turns on
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
-  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true };
+  char  ip_station[16] = {0};     // IP station node ID for the Trains screen (e.g. "9402006")
+  char  ip_station_name[40] = {0}; // Station display name (prefill for the web search UI)
+  char  api_base[128] = {0};      // Netlify site base URL, e.g. "https://minidash.netlify.app"
+  bool  use_api_proxy = false;    // route widget fetches through the api_base proxy endpoints
+  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true, true };
   bool  backlight_control = true;   // drive backlight via transistor on D8/GPIO15
   bool  backlight_active_high = true;// GPIO level that turns the backlight ON
 };

@@ -3,10 +3,13 @@
 #include "env.h"
 #include "nettime.h"
 #include "control.h"
+#include "tlslock.h"
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266mDNS.h>
 #include <LittleFS.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 
 WiFiManager wm;
 static ESP8266WebServer server(80);
@@ -122,6 +125,10 @@ static String resolve_token(const String& tok) {
   if (tok == "MON_ROWS")   return monitor_rows();
   if (tok == "EHS_ROWS")   return esphome_rows();
   if (tok == "FR")         return String(cfg.flight_range);
+  if (tok == "CPS")        return htmlEscape(cfg.ip_station);
+  if (tok == "CSN")        return htmlEscape(cfg.ip_station_name);
+  if (tok == "APB")        return htmlEscape(cfg.api_base);
+  if (tok == "UAP")        return cfg.use_api_proxy ? "checked" : "";
   if (tok == "BLC")        return cfg.backlight_control ? "checked" : "";
   if (tok == "BLH")        return cfg.backlight_active_high ? "checked" : "";
   if (tok == "IP")         return WiFi.localIP().toString();
@@ -158,7 +165,10 @@ static void handle_root() {
       if (open > from) server.sendContent(line.substring(from, open));
       String tok = line.substring(open + 2, close);
       tok.trim();  // tolerate "{{ TOKEN }}" (e.g. after HTML formatting)
-      server.sendContent(resolve_token(tok));
+      String val = resolve_token(tok);
+      // IMPORTANT: sendContent("") is the chunked end-of-body terminator, so an
+      // empty token (e.g. an unset {{ CPS }}) would truncate the page right here.
+      if (val.length()) server.sendContent(val);
       from = close + 2;
     }
     if (from < (int)line.length()) server.sendContent(line.substring(from));
@@ -221,6 +231,115 @@ static void handle_api_screen() {
     else { server.send(400, "text/plain", "action must be next|prev or provide index=N"); return; }
   }
   server.send(200, "application/json", control_status_json());
+}
+
+// ---- Station search proxy ---------------------------------------------------
+
+// URL-encode a string for use in a URL path segment, keeping UTF-8 bytes intact
+// (e.g. 'ã' -> %C3%A3). The IP station-name search is strict about diacritics.
+static String url_encode(const String &s) {
+  String o;
+  for (unsigned int i = 0; i < s.length(); i++) {
+    unsigned char c = s[i];
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      o += (char)c;
+    } else {
+      char buf[4];
+      snprintf(buf, sizeof(buf), "%%%02X", c);
+      o += buf;
+    }
+  }
+  return o;
+}
+
+static const char* IP_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/144.0.0.0 Safari/537.36";
+
+// Escape a string for safe use inside a JSON double-quoted string (station names
+// are plain text but could in theory contain quotes or backslashes).
+static String json_escape(const String &s) {
+  String o;
+  for (unsigned int i = 0; i < s.length(); i++) {
+    char ch = s[i];
+    if (ch == '"') o += "\\\"";
+    else if (ch == '\\') o += "\\\\";
+    else o += ch;
+  }
+  return o;
+}
+
+// GET /api/stations?q=<name> -> same-origin proxy for the IP station-name search.
+// The IP API sends no Access-Control-Allow-Origin, so a browser page served from
+// the device cannot fetch it cross-origin; this endpoint does the HTTPS fetch
+// device-side and returns a small JSON list [{id,name}]. Public API, no secrets.
+static void handle_api_stations() {
+  String q = server.arg("q");
+  q.trim();
+  if (!q.length()) { server.send(400, "application/json", "{\"error\":\"missing q\"}"); return; }
+
+  if (!tls_try_acquire()) {
+    server.send(503, "application/json", "{\"error\":\"tls busy\"}");
+    return;
+  }
+
+  BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
+  if (!c) { tls_release(); server.send(500, "application/json", "{\"error\":\"alloc\"}"); return; }
+  c->setInsecure();
+  c->setBufferSizes(1024, 512);
+  c->setTimeout(3000);
+
+  String out = "{\"stations\":[]}";
+  if (c->connect(TRAIN_HOST_DEF, 443)) {
+    String path = String(TRAIN_PATH_DEF) + "/estacao-nome/" + url_encode(q);
+    c->print(String("GET ") + path + " HTTP/1.1\r\n" +
+             "Host: " + TRAIN_HOST_DEF + "\r\n" +
+             "User-Agent: " + IP_UA + "\r\n" +
+             "Accept: application/json\r\n" +
+             "Connection: close\r\n\r\n");
+    unsigned long t0 = millis();
+    uint8_t m = 0;
+    while (millis() - t0 < 5000) {
+      while (c->available() && m < 4) {
+        char ch = c->read();
+        if ((m == 0 || m == 2) && ch == '\r') m++;
+        else if ((m == 1 || m == 3) && ch == '\n') m++;
+        else m = 0;
+      }
+      if (m == 4) break;
+      if (!c->connected() && !c->available()) break;
+    }
+    String body;
+    if (m == 4) {
+      t0 = millis();
+      while (millis() - t0 < 5000 && body.length() < 4096) {
+        if (c->available()) body += (char)c->read();
+        else if (!c->connected()) break;
+        else delay(1);
+      }
+    }
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, body);
+    if (!err) {
+      JsonArray resp = doc["response"].as<JsonArray>();
+      if (!resp.isNull()) {
+        String o = "{\"stations\":[";
+        bool first = true;
+        for (JsonObject s : resp) {
+          if (!first) o += ",";
+          first = false;
+          o += "{\"id\":\"" + String((long)(s["NodeID"] | 0)) +
+               "\",\"name\":\"" + json_escape(String(s["Nome"] | "")) + "\"}";
+        }
+        o += "]}";
+        out = o;
+      }
+    }
+  }
+  c->stop(); delete c;
+  tls_release();
+  server.send(200, "application/json", out);
 }
 
 // GET /config.json -> pretty JSON view of the current config (read-only fetch).
@@ -378,6 +497,7 @@ void portal_begin() {
   server.on("/api/status", HTTP_GET, handle_api_status);
   server.on("/api/display", HTTP_POST, handle_api_display);
   server.on("/api/screen", HTTP_POST, handle_api_screen);
+  server.on("/api/stations", HTTP_GET, handle_api_stations);
   httpUpdater.setup(&server);   // OTA: firmware + filesystem at /update
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
