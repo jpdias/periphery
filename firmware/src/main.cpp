@@ -166,7 +166,7 @@ static void boot_heap_settle(unsigned long timeoutMs) {
 
 void setup() {
   Serial.begin(115200);
-  mlog.println("\nBooting miniDash...");
+  mlog.println("\nBooting PTMonitor...");
 
   // Drive the backlight pin HIGH immediately so the panel lights up during boot
   // regardless of config (default is an active-high low-side switch, e.g. BC547

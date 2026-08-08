@@ -10,6 +10,10 @@ export default async function handler(event) {
 
   if (!ARC_GIS_URL) return fail(500, "ARC_GIS_URL env var not set");
 
+  // Radius is optional, in km, overridable per request (mirrors flight range).
+  const radiusKm = params.radius !== undefined ? Number(params.radius) : INCIDENT_RADIUS_M / 1000;
+  const radiusM = (isFinite(radiusKm) && radiusKm > 0 ? radiusKm : INCIDENT_RADIUS_M / 1000) * 1000;
+
   const ll = `${params.lon},${params.lat}`;
   const q = toQuery({
     where: "1=1",
@@ -18,7 +22,7 @@ export default async function handler(event) {
     geometry: ll,
     geometryType: "esriGeometryPoint",
     inSR: 4326,
-    distance: INCIDENT_RADIUS_M,
+    distance: radiusM,
     units: "esriSRUnit_Meter",
     spatialRel: "esriSpatialRelIntersects",
     orderByFields: "DataOcorrencia DESC",

@@ -22,12 +22,17 @@ export function cacheHeaders(ttlSeconds) {
   };
 }
 
+// Serialize JSON with CORS + extra headers. Pass `status` inside the headers
+// object to override the response code (fail() relies on this).
 export function json(data, headers = {}) {
+  const status = typeof headers.status === "number" ? headers.status : 200;
+  const { status: _drop, ...rest } = headers;
   return new Response(JSON.stringify(data), {
+    status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       ...corsHeaders(),
-      ...headers,
+      ...rest,
     },
   });
 }
@@ -75,6 +80,23 @@ export async function upstreamJson(url, opts = {}) {
   }
 }
 
+// Like upstreamJson but returns the raw response text (for text-based upstreams
+// such as the NASA Horizons ephemeris, which is plain text, not JSON).
+export async function upstreamText(url, opts = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? UPSTREAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: opts.headers ?? {},
+    });
+    const text = await res.text();
+    return { status: res.status, body: text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function requireParams(event, names) {
   const params = event.queryStringParameters || {};
   for (const n of names) {
@@ -90,4 +112,64 @@ export function toQuery(params) {
     .filter(([, v]) => v !== undefined && v !== "")
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
+}
+
+// Great-circle distance in km between two [lat, lon] pairs.
+export function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const rad = Math.PI / 180;  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// Find the nearest entry among an array of {lat, lon} records.
+export function nearestTo(lat, lon, records) {
+  let best = null;
+  for (const r of records) {
+    if (!isFinite(r.lat) || !isFinite(r.lon)) continue;
+    const d = haversineKm(lat, lon, r.lat, r.lon);
+    if (!best || d < best.distance) best = { ...r, distance: d };
+  }
+  return best;
+}
+
+// Build the query URL for an APA ArcGIS FeatureServer layer (used by RADNET
+// and QualAr). Wraps a where clause + outFields and returns features as JSON.
+export function apaQueryUrl(base, service, { where = "1=1", outFields = "*", orderBy = "", limit = 100, geometry = null, withGeometry = false, outSR = "4326" } = {}) {
+  const params = {
+    where,
+    outFields,
+    returnGeometry: geometry ? "true" : withGeometry ? "true" : "false",
+    f: "geojson",
+    outSR,
+    resultRecordCount: limit,
+  };
+  if (orderBy) params.orderByFields = orderBy;
+  if (geometry) {
+    params.geometry = `${geometry.lon},${geometry.lat}`;
+    params.geometryType = "esriGeometryPoint";
+    params.inSR = 4326;
+    params.distance = geometry.radiusM;
+    params.units = "esriSRUnit_Meter";
+    params.spatialRel = "esriSpatialRelIntersects";
+  }
+  return `${base}${service}/query?${toQuery(params)}`;
+}
+
+// In-process TTL cache for slow/rate-limited upstreams. The dev server keeps
+// modules loaded between requests, so this survives across calls in a single
+// process (Netlify also reuses lambdas between invocations). By default only
+// truthy results are cached; pass `isOk` to decide what counts as good (e.g.
+// don't cache upstream 429s). Always returns a Promise so callers can .then().
+const cacheStore = new Map();
+export function cachedFetch(key, ttlMs, fn, isOk = v => Boolean(v)) {
+  const now = Date.now();
+  const hit = cacheStore.get(key);
+  if (hit && now < hit.expiresAt) return Promise.resolve(hit.value);
+  return fn().then((value) => {
+    if (isOk(value)) cacheStore.set(key, { value, expiresAt: Date.now() + ttlMs });
+    return value;
+  });
 }

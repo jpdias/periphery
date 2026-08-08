@@ -1,8 +1,8 @@
-# miniDash Web
+# PTMonitor Web
 
 Static dashboard frontend (GitHub Pages compatible, PWA-capable). Desktop
 friendly, same widgets as the device. Consumes the `/api/<widget>` endpoints
-provided by the miniDash server (`../server`).
+provided by the PTMonitor server (`../server`).
 
 ## Layout
 

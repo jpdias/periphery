@@ -1,11 +1,7 @@
 node_modules/
-dist/
-coverage/
 **/.pio/
 **/.netlify/
 server/netlify/
-server/deno.lock
 server/package-lock.json
-server/.env
-.vscode/
+server/deno.lock
 firmware/docs/*.jpeg

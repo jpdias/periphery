@@ -1,4 +1,4 @@
-# miniDash
+# PTMonitor
 
 ESP8266 (Wemos D1 mini) + 1.8" ST7735 TFT dashboard firmware.
 
@@ -205,7 +205,7 @@ python3 -m venv .venv-tools
 ```
 
 ## Configure
-First boot opens a `miniDash-Setup` AP (pw `minidashpass`) for WiFi + location.
+First boot opens a `PTMonitor-Setup` AP (pw `ptmonitorpass`) for WiFi + location.
 After connected, the device serves a config page at its IP (port 80) with a live
 terminal panel. It also advertises itself over mDNS, so it's reachable at
 **http://&lt;hostname&gt;.local** (default `minidash.local`; the hostname also
@@ -266,7 +266,7 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 
 ### Boot sequence (deterministic one-time fetch)
 Instead of racing several non-blocking FSMs at startup, `setup()` runs a fixed,
-**blocking** boot sequence with a live on-screen step list (`miniDash` → `Fetching
+**blocking** boot sequence with a live on-screen step list (`PTMonitor` → `Fetching
 data...` → one line per step, `+`=done / `!`=fail / `.`=working):
 1. **NTP sync** — wait for a real clock (date-based fetches are meaningless at epoch).
 2. **Weather** + **Forecast** + **External IP** — plain HTTP, no TLS contention.
