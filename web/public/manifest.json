@@ -1,6 +1,6 @@
 {
-  "name": "miniDash",
-  "short_name": "miniDash",
+  "name": "PTMonitor",
+  "short_name": "PTMonitor",
   "description": "Live dashboard of weather, incidents, trains, flights and moon phase.",
   "start_url": "/",
   "display": "standalone",

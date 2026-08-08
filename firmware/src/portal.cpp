@@ -386,7 +386,7 @@ static void send_reboot_page() {
     "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
     "<title>Saved</title><link rel=\"stylesheet\" href=\"/style.css\"></head><body>"
-    "<h1>miniDash</h1>"
+    "<h1>PTMonitor</h1>"
     "<div class=\"msg\"><strong>Saved.</strong><br>Rebooting... returning to config in "
     "<span id=\"c\">10</span>s.</div>"
     "<script>var n=10;var el=document.getElementById('c');"

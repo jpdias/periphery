@@ -2,7 +2,7 @@
   "name": "minidash-server",
   "version": "1.0.0",
   "private": true,
-  "description": "miniDash API (Netlify Functions) + local dev server",
+  "description": "PTMonitor API (Netlify Functions) + local dev server",
   "type": "module",
   "scripts": {
     "dev": "netlify dev",
@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "netlify-cli": "^27.1.0"
+  },
+  "dependencies": {
+    "satellite.js": "^7.1.0"
   }
 }

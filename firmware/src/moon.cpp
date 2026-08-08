@@ -162,7 +162,7 @@ void moon_tick() {
       if (cli->connect(MOON_HOST, MOON_PORT)) {
         cli->print(String("GET ") + url + " HTTP/1.1\r\n" +
                    "Host: " + MOON_HOST + "\r\n" +
-                   "User-Agent: miniDash\r\n" +
+                   "User-Agent: PTMonitor\r\n" +
                    "Connection: close\r\n\r\n");
         mlog.printf("[MOON] GET %s\n", url.c_str());
         phase = M_WAIT;
@@ -222,7 +222,7 @@ bool moon_fetch_blocking(unsigned long timeoutMs) {
   if (c.connect(MOON_HOST, MOON_PORT)) {
     c.print(String("GET ") + url + " HTTP/1.1\r\n" +
             "Host: " + MOON_HOST + "\r\n" +
-            "User-Agent: miniDash\r\n" +
+            "User-Agent: PTMonitor\r\n" +
             "Connection: close\r\n\r\n");
     String body; bool inBody = false; String hdr;
     unsigned long t0 = millis();

@@ -13,10 +13,15 @@ import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---- load .env (simple KEY=VALUE, no interpolation) ----
-if (existsSync(".env")) {
-  for (const line of readFileSync(".env", "utf8").split("\n")) {
+// Resolve relative paths from this file's location so the server works no
+// matter what directory it is launched from.
+const ROOT = fileURLToPath(new URL(".", import.meta.url));
+const ENV = join(ROOT, ".env");
+if (existsSync(ENV)) {
+  for (const line of readFileSync(ENV, "utf8").split("\n")) {
     const t = line.trim();
     if (!t || t.startsWith("#")) continue;
     const eq = t.indexOf("=");
@@ -28,8 +33,8 @@ if (existsSync(".env")) {
 }
 
 const PORT = Number(process.env.PORT || 8080);
-const PUB = "../web/public";
-const FUNCS = "functions";
+const PUB = join(ROOT, "../web/public");
+const FUNCS = join(ROOT, "functions");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -51,7 +56,7 @@ async function loadHandlers() {
   for (const f of files) {
     if (!f.endsWith(".js")) continue;
     const name = f.replace(/\.js$/, "");
-    const mod = await import(join(process.cwd(), FUNCS, f));
+    const mod = await import(join(FUNCS, f));
     handlers.set(name, mod.default);
   }
   return handlers;
@@ -125,12 +130,17 @@ const server = createServer(async (req, res) => {
       const data = await readFile(filePath);
       res.statusCode = 200;
       res.setHeader("Content-Type", MIME[extname(filePath)] || "application/octet-stream");
+      // Never let the browser or the service worker serve stale dev assets.
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
       res.end(data);
     } catch {
       // SPA fallback
       const data = await readFile(join(PUB, "index.html"));
       res.statusCode = 200;
       res.setHeader("Content-Type", MIME[".html"]);
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
       res.end(data);
     }
   } catch (e) {
@@ -143,5 +153,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`miniDash dev server: http://localhost:${PORT}`);
   console.log(`  static  -> ${PUB}`);
-  console.log(`  api     -> ./${FUNCS} (loaded on each request)`);
+  console.log(`  api     -> ${FUNCS} (loaded on each request)`);
 });
