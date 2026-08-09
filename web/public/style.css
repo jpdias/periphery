@@ -145,11 +145,30 @@ body {
   gap: 10px;
   min-width: 0;
   overflow: hidden;
-  cursor: grab;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
-.card.dragging { opacity: 0.45; border-color: var(--accent); cursor: grabbing; }
+.card.dragging { opacity: 0.45; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(254, 92, 53, 0.3); }
 .card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(254, 92, 53, 0.25); }
+/* Grafana-style grip handle in the top-right corner */
+.drag-handle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  cursor: grab;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  z-index: 3;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.drag-handle:hover { opacity: 0.95; color: var(--accent); cursor: grab; }
+.card.dragging .drag-handle { cursor: grabbing; }
 /* Control-panel corner brackets */
 .card::before, .card::after {
   content: "";
@@ -287,8 +306,8 @@ body {
   align-items: center;
   gap: 16px;
 }
-.solar-big {
-  font-size: 48px;
+.solar-big, .rad-big, .air-big, .ren-big, .psi-big {
+  font-size: 44px;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -298,13 +317,20 @@ body {
 .solar-big.cls-m { color: var(--warn); text-shadow: 0 0 16px rgba(255, 176, 32, 0.5); }
 .solar-big.cls-c { color: var(--accent); text-shadow: 0 0 14px rgba(254, 92, 53, 0.5); }
 .solar-big.cls-b { color: var(--muted); }
-.solar-side { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.solar-side, .rad-side, .air-side, .ren-side, .psi-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
 .solar-big-label { color: var(--muted); font-size: 11px; font-family: var(--mono); }
 
 .solar-flare-scale,
 .rad-scale,
 .air-scale,
-.ren-scale {
+.ren-scale,
+.seismo-scale {
   position: relative;
   height: 22px;
   background: rgba(255, 255, 255, 0.03);
@@ -316,43 +342,79 @@ body {
 .solar-flare-scale span,
 .rad-scale span,
 .air-scale span,
-.ren-scale span {
+.ren-scale span,
+.seismo-scale span {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
-  color: var(--muted);
+  color: #06121a;
   font-family: var(--mono);
-  border-right: 1px solid rgba(36, 49, 66, 0.7);
+  border-right: 1px solid rgba(6, 18, 26, 0.5);
 }
 .solar-flare-scale span:last-child,
 .rad-scale span:last-child,
 .air-scale span:last-child,
-.ren-scale span:last-child { border-right: none; }
-/* Scale segment labels get the same green→red ramp as the widgets they rate. */
-.solar-flare-scale .fs-a, .air-scale .as-1 { color: var(--ok); }
-.solar-flare-scale .fs-b, .air-scale .as-2 { color: #7ce8a8; }
-.solar-flare-scale .fs-c, .air-scale .as-3 { color: var(--warn); }
-.solar-flare-scale .fs-m, .air-scale .as-4 { color: #ff9800; }
-.solar-flare-scale .fs-x, .air-scale .as-5 { color: var(--danger); }
-.rad-scale .rs-ok { color: var(--ok); }
-.rad-scale .rs-warn { color: var(--warn); }
-.rad-scale .rs-high { color: var(--danger); }
+.ren-scale span:last-child,
+.seismo-scale span:last-child { border-right: none; }
+/* Scale segments are filled boxes on the same green→red ramp the widgets use. */
+.solar-flare-scale .fs-a, .air-scale .as-1, .seismo-scale .ss-1 { background: var(--ok); }
+.solar-flare-scale .fs-b, .air-scale .as-2, .seismo-scale .ss-2 { background: #7ce8a8; }
+.solar-flare-scale .fs-c, .air-scale .as-3, .seismo-scale .ss-3 { background: var(--warn); }
+.solar-flare-scale .fs-m, .air-scale .as-4, .seismo-scale .ss-4 { background: #ff9800; }
+.solar-flare-scale .fs-x, .air-scale .as-5, .seismo-scale .ss-5 { background: var(--danger); }
+.rad-scale .rs-ok { background: var(--ok); }
+.rad-scale .rs-warn { background: var(--warn); }
+.rad-scale .rs-high { background: var(--danger); }
+.ren-scale .ren-re { background: var(--ok); }
+.ren-scale .ren-fossil { background: #ff9800; }
 .solar-flare-scale .fs-marker,
 .rad-scale .rs-marker,
 .air-scale .as-marker,
-.ren-scale .ren-marker {
+.ren-scale .ren-marker,
+.seismo-scale .ss-marker {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 0;
+  bottom: 0;
+  left: 0;
   width: 3px;
   background: var(--accent);
   border-radius: 0;
-  left: 0;
-  box-shadow: 0 0 10px var(--accent);
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(254, 92, 53, 0.5);
   pointer-events: none;
+}
+/* downward caret on top */
+.fs-marker::before,
+.rs-marker::before,
+.as-marker::before,
+.ren-marker::before,
+.ss-marker::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--accent);
+}
+/* upward caret on bottom */
+.fs-marker::after,
+.rs-marker::after,
+.as-marker::after,
+.ren-marker::after,
+.ss-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 6px solid var(--accent);
 }
 
 /* ---- Forecast ---------------------------------------------------------- */
@@ -503,12 +565,7 @@ body {
 /* ---- Radiation --------------------------------------------------------- */
 
 .rad-big {
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1;
   color: var(--text);
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
 }
 .rad-big.warn { color: var(--warn); text-shadow: 0 0 14px rgba(255, 176, 32, 0.5); }
 .rad-big.high { color: var(--danger); text-shadow: 0 0 16px rgba(255, 59, 92, 0.6); }
@@ -516,13 +573,7 @@ body {
 
 /* ---- Air quality ------------------------------------------------------- */
 
-.air-big {
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
-}
+.air-big { }
 .air-big.q0 { color: var(--muted); }
 .air-big.q1 { color: var(--ok); text-shadow: 0 0 14px rgba(57, 255, 136, 0.4); }
 .air-big.q2 { color: #7ce8a8; }
@@ -635,16 +686,11 @@ body {
 /* ---- National grid (REN) ----------------------------------------------- */
 
 .ren-big {
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
   text-shadow: 0 0 16px rgba(254, 92, 53, 0.3);
 }
 .ren-label { color: var(--muted); font-size: 11px; font-family: var(--mono); }
-.ren-re { background: rgba(57, 255, 136, 0.16) !important; color: var(--ok) !important; }
-.ren-fossil { background: rgba(255, 152, 0, 0.16) !important; color: #ff9800 !important; }
+.ren-re { color: #06121a !important; }
+.ren-fossil { color: #06121a !important; }
 .ren-sources { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12px; font-family: var(--mono); }
 .ren-src { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed rgba(36, 49, 66, 0.7); }
 .ren-src-name { color: var(--muted); }
@@ -729,11 +775,6 @@ body {
 /* ---- PSI --------------------------------------------------------------- */
 
 .psi-big {
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
   text-shadow: 0 0 14px rgba(254, 92, 53, 0.25);
 }
 .psi-big.down { color: var(--danger); text-shadow: 0 0 14px rgba(255, 59, 92, 0.4); }

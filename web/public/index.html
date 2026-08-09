@@ -7,12 +7,12 @@
   <meta name="description" content="PTMonitor — live dashboard of weather, incidents, trains, flights and moon phase.">
   <title>PTMonitor</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23111217'/><circle cx='50' cy='50' r='30' fill='none' stroke='%2329a4e8' stroke-width='8'/><circle cx='50' cy='20' r='10' fill='%23f0a72b'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23da291c'/><rect width='40' height='100' fill='%23046a38'/><circle cx='40' cy='50' r='15' fill='%23ffcc00'/><circle cx='40' cy='50' r='6' fill='none' stroke='%23da291c' stroke-width='2'/></svg>">
    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">mini<span class="accent">Dash</span></div>
+    <div class="brand">PT<span class="accent">Monitor</span></div>
     <div class="loc-chip" id="loc-chip" title="Current coordinates">
       <span class="loc-dot"></span>
       <span id="loc-coords">--, --</span>
@@ -184,6 +184,10 @@
     <!-- Seismic (IPMA) -->
     <section class="card seismic-card" data-widget="seismic">
       <h2 class="card-title" data-tip="Latest earthquakes from IPMA/EMSC and USGS near your location">Seismic <span class="sub" id="seismic-count"></span><span class="upd" id="upd-seismic"></span></h2>
+      <div class="seismo-scale" id="seismo-scale">
+        <span class="ss-1">&lt;2</span><span class="ss-2">2</span><span class="ss-3">3</span><span class="ss-4">4</span><span class="ss-5">5+</span>
+        <i class="ss-marker" id="seismo-marker"></i>
+      </div>
       <ul class="seismic-list" id="seismic-list"></ul>
     </section>
 
