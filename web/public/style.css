@@ -380,10 +380,10 @@ body {
   bottom: 0;
   left: 0;
   width: 3px;
-  background: var(--accent);
+  background: var(--bg);
   border-radius: 0;
   transform: translateX(-50%);
-  box-shadow: 0 0 6px rgba(254, 92, 53, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 0 5px rgba(0, 0, 0, 0.5);
   pointer-events: none;
 }
 /* downward caret on top */
@@ -399,7 +399,7 @@ body {
   transform: translateX(-50%);
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid var(--accent);
+  border-top: 6px solid var(--bg);
 }
 /* upward caret on bottom */
 .fs-marker::after,
@@ -414,7 +414,7 @@ body {
   transform: translateX(-50%);
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-bottom: 6px solid var(--accent);
+  border-bottom: 6px solid var(--bg);
 }
 
 /* ---- Forecast ---------------------------------------------------------- */
