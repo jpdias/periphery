@@ -208,16 +208,108 @@ function applyCardOrder() {
   });
 }
 
-// Drag & drop reordering for dashboard cards. Order persists in cfg.cardOrder.
+// Grafana-style grip handle (six dots) shown on each card; only it starts a drag.
+const DRAG_HANDLE_SVG = `
+  <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
+    <circle cx="2.5" cy="2.5" r="1.6"/><circle cx="7.5" cy="2.5" r="1.6"/>
+    <circle cx="2.5" cy="8"   r="1.6"/><circle cx="7.5" cy="8"   r="1.6"/>
+    <circle cx="2.5" cy="13.5" r="1.6"/><circle cx="7.5" cy="13.5" r="1.6"/>
+  </svg>`;
+
+function addDragHandle(card) {
+  if (!card || card.querySelector(".drag-handle")) return;
+  const h = document.createElement("span");
+  h.className = "drag-handle";
+  h.title = "Drag to reorder";
+  h.draggable = true;
+  h.innerHTML = DRAG_HANDLE_SVG;
+  card.prepend(h);
+}
+
+function injectDragHandles() {
+  document.querySelectorAll(".card").forEach(addDragHandle);
+}
+
+// Drag & drop reordering for dashboard cards via Pointer Events (works with
+// mouse and touch). Only the grip handle starts a drag. Order persists in
+// cfg.cardOrder. Fallback to HTML5 DnD when Pointer Events are unsupported.
 function initCardDrag() {
   const grid = document.getElementById("grid");
   if (!grid) return;
+
+  if (!window.PointerEvent) {
+    initHtml5Drag(grid);
+    return;
+  }
+
+  let dragEl = null, touchId = null;
+
+  const cardFromPoint = (x, y) => {
+    dragEl.style.display = "none";
+    const el = document.elementFromPoint(x, y);
+    dragEl.style.display = "";
+    return el ? el.closest(".card") : null;
+  };
+
+  const reorderUnder = (x, y) => {
+    const target = cardFromPoint(x, y);
+    if (!target || target === dragEl) return;
+    const rect = target.getBoundingClientRect();
+    if (y > rect.top + rect.height / 2) {
+      if (dragEl !== target.nextElementSibling) target.after(dragEl);
+    } else {
+      if (dragEl !== target.previousElementSibling) target.before(dragEl);
+    }
+  };
+
+  const onMove = e => {
+    if (!dragEl) return;
+    if (touchId !== null && e.pointerId !== touchId) return;
+    reorderUnder(e.clientX, e.clientY);
+  };
+
+  const persist = () => {
+    cfg.cardOrder = [...grid.querySelectorAll(".card")].map(c => c.dataset.widget);
+    saveConfig();
+    if (dragEl) {
+      dragEl.classList.remove("dragging");
+      dragEl.style.zIndex = "";
+    }
+    dragEl = null;
+    touchId = null;
+    document.body.style.cursor = "";
+  };
+
+  const onDown = e => {
+    const handle = e.target.closest ? e.target.closest(".drag-handle") : null;
+    if (!handle) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.preventDefault();
+    touchId = e.pointerId;
+    const card = handle.closest(".card");
+    if (!card) return;
+    dragEl = card;
+    card.classList.add("dragging");
+    card.style.zIndex = 50;
+    document.body.style.cursor = "grabbing";
+    try { grid.setPointerCapture(e.pointerId); } catch {}
+  };
+
+  grid.addEventListener("pointerdown", onDown);
+  grid.addEventListener("pointermove", onMove);
+  grid.addEventListener("pointerup", persist);
+  grid.addEventListener("pointercancel", persist);
+}
+
+// HTML5 drag & drop fallback for browsers without PointerEvent support.
+function initHtml5Drag(grid) {
   let dragEl = null;
-  grid.querySelectorAll(".card").forEach(c => (c.draggable = true));
 
   grid.addEventListener("dragstart", e => {
-    const card = e.target.closest(".card");
-    if (!card || e.target.closest("button, a, input, select, textarea")) return;
+    const handle = e.target.closest(".drag-handle");
+    if (!handle) return;
+    const card = handle.closest(".card");
+    if (!card) return;
     dragEl = card;
     card.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
@@ -227,29 +319,21 @@ function initCardDrag() {
     e.preventDefault();
     if (!dragEl) return;
     e.dataTransfer.dropEffect = "move";
-    grid.querySelectorAll(".card.drag-over").forEach(c => c.classList.remove("drag-over"));
     const target = e.target.closest(".card");
     if (!target || target === dragEl) return;
-    target.classList.add("drag-over");
     const rect = target.getBoundingClientRect();
-    const after = e.clientY > rect.top + rect.height / 2;
-    if (after) target.after(dragEl);
+    if (e.clientY > rect.top + rect.height / 2) target.after(dragEl);
     else target.before(dragEl);
   });
-  grid.addEventListener("drop", e => {
-    e.preventDefault();
+  const done = () => {
     if (!dragEl) return;
     cfg.cardOrder = [...grid.querySelectorAll(".card")].map(c => c.dataset.widget);
     saveConfig();
     dragEl.classList.remove("dragging");
     dragEl = null;
-    grid.querySelectorAll(".card.drag-over").forEach(c => c.classList.remove("drag-over"));
-  });
-  grid.addEventListener("dragend", () => {
-    if (dragEl) dragEl.classList.remove("dragging");
-    dragEl = null;
-    grid.querySelectorAll(".card.drag-over").forEach(c => c.classList.remove("drag-over"));
-  });
+  };
+  grid.addEventListener("drop", done);
+  grid.addEventListener("dragend", done);
 }
 
 // Common IANA timezones for the small-clock dropdown.
@@ -388,6 +472,7 @@ function renderClockCards() {
       <div class="clock-date" id="clock${n}-date"></div>`;
     const lastClock = [...grid.querySelectorAll('.card[data-widget^="clock"]:not([data-widget="clock"])')].pop();
     (lastClock || main).after(card);
+    addDragHandle(card);
   });
 }
 
@@ -1205,6 +1290,9 @@ async function loadSeismic() {
         ((a.distance_km ?? 1e9) - (b.distance_km ?? 1e9)));
     document.getElementById("seismic-count").textContent =
       data.last_activity ? `as of ${fmtTime(data.last_activity)}` : "";
+    const maxMag = ev.length ? Math.max(...ev.map(e => e.mag)) : null;
+    const marker = document.getElementById("seismo-marker");
+    if (marker) marker.style.left = `${maxMag == null ? 0 : Math.min(100, Math.max(0, (maxMag / 6) * 100))}%`;
     if (!ev.length) {
       el.innerHTML = `<div class="empty">No recent seismic activity</div>`;
       stamp("seismic");
@@ -1784,6 +1872,7 @@ document.getElementById("moon-phase").innerHTML = moonDisc(bootFrac);
 document.getElementById("moon-label").textContent = describeMoon(bootFrac);
 renderClockCards();
 applyCardOrder();
+injectDragHandles();
 applyWidgetVisibility();
 updateSmallClocks();
 initCardDrag();
