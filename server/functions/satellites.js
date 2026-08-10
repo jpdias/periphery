@@ -124,11 +124,26 @@ export default async function handler(event) {
     return a.next ? -1 : b.next ? 1 : 0;
   });
 
+  // Smart TTL: the computed passes only go stale once the next one has ended,
+  // so cache until the earliest upcoming pass sets (clamped 1 min - 12 h).
+  let ttl = SAT_TTL;
+  let nextSet = Infinity;
+  for (const s of results) {
+    if (s.next && s.next.set) {
+      const t = Date.parse(s.next.set);
+      if (isFinite(t) && t < nextSet) nextSet = t;
+    }
+  }
+  if (isFinite(nextSet)) {
+    const secs = Math.round((nextSet - Date.now()) / 1000);
+    ttl = Math.max(60, Math.min(secs, 12 * 3600));
+  }
+
   return ok({
     source: "Celestrak + SGP4",
     observer: { lat, lon },
     min_elev: MIN_ELEV,
     window_h: WINDOW_H,
     satellites: results,
-  }, { ttl: SAT_TTL });
+  }, { ttl });
 }
