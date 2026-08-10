@@ -1,6 +1,6 @@
-# PTMonitor Server
+# periphery Server
 
-Netlify Functions + local dev server for the PTMonitor dashboard. Provides the
+Netlify Functions + local dev server for the periphery dashboard. Provides the
 `/api/<widget>` endpoints consumed by both the web frontend (`../web`) and the
 device firmware (via the `api_base` / `use_api_proxy` config).
 
@@ -53,7 +53,7 @@ or on failure:
 ```
 
 Responses are cached with `Cache-Control: public, max-age=TTL,
-stale-while-revalidate=60`. When the caller sends `X-Minidash-Raw: 1` (the
+stale-while-revalidate=60`. When the caller sends `X-Periphery-Raw: 1` (the
 firmware), the function returns the upstream body verbatim so the ESP8266
 streaming parsers work unchanged.
 
@@ -89,6 +89,27 @@ All defaults live in `functions/env.js` (the analog of the firmware `env.h`).
 Override any as Netlify env vars (production) or in `.env` (local dev). Secrets
 (`ARC_GIS_URL`, `ARC_GIS_TOKEN`, `IPINFO_TOKEN`) must be set in the Netlify UI —
 never committed. See `.env.example` for the full list.
+
+`ALLOWED_ORIGIN` controls browser CORS: only this origin may call the API from a
+browser (default `https://jpdias.me`, the GitHub Pages host). Firmware is
+unaffected — it sends no `Origin` header and doesn't evaluate CORS.
+
+## Deploy
+
+Netlify hosts **only the API functions** (`netlify.toml` — no publish directory).
+The web frontend is deployed separately to GitHub Pages at
+`https://jpdias.me/periphery/` (see `../web`), which calls these functions
+cross-origin.
+
+1. Connect the repo to Netlify. The `netlify.toml` lives in `server/`, which
+   Netlify treats as the base directory automatically.
+2. Set the env vars in the Netlify UI (copy from `.env.example`; secrets required:
+   `ARC_GIS_URL`, `ARC_GIS_TOKEN`, `IPINFO_TOKEN`). Ensure `ALLOWED_ORIGIN` is
+   `https://jpdias.me`.
+3. **Edge Access**: the site is behind Netlify Edge Access. Add an allow rule so
+   `/.netlify/functions/*` (or `/api/*`) is publicly reachable — otherwise the
+   browser on GitHub Pages gets the login wall instead of data. CORS then gates
+   browser access to `https://jpdias.me`.
 
 ## Local development
 

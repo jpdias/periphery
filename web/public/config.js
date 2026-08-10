@@ -2,8 +2,8 @@
 // Defaults live here; users override at runtime via the ⚙ settings (stored in
 // localStorage). The API base is auto-detected when empty (same-origin /api/*,
 // which works under netlify dev and the light dev server).
-window.MINIDASH_CONFIG = {
-  apiBase: "",          // e.g. "https://minidash.netlify.app" ("" = same-origin)
+window.PERIPHERY_CONFIG = {
+  apiBase: "https://prismatic-horse-4c465a.netlify.app", // Netlify API host; "" = same-origin
   useApiProxy: true,    // route widget fetches through the API functions
   defaultLat: 41.17,
   defaultLon: -8.43,

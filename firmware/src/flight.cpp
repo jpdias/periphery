@@ -216,8 +216,8 @@ void flight_tick() {
         flight_request(host, url);
         String req = String("GET ") + url + " HTTP/1.1\r\n" +
                      "Host: " + host + "\r\n" +
-                     "User-Agent: PTMonitor\r\n";
-        if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+                     "User-Agent: periphery\r\n";
+        if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
         req += "Connection: close\r\n\r\n";
         cli->print(req);
         phase = P_WAIT;
@@ -276,8 +276,8 @@ bool flight_fetch_blocking(unsigned long timeoutMs) {
     flight_request(host, url);
     String req = String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: " + host + "\r\n" +
-                 "User-Agent: PTMonitor\r\n";
-    if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+                 "User-Agent: periphery\r\n";
+    if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
     req += "Connection: close\r\n\r\n";
     c->print(req);
     // Wait for the body, then parse straight from the stream.

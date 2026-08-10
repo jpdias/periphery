@@ -143,7 +143,7 @@ void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(2);
   tft.setCursor(18, 50);
-  tft.print("PTMonitor");
+  tft.print("periphery");
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
   tft.setCursor(14, 78);
@@ -178,7 +178,7 @@ void ui_screen_boot(const char *title) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
-  tft.print("PTMonitor");
+  tft.print("periphery");
   tft.setTextColor(ST7735_WHITE);
   tft.setCursor(2, 14);
   tft.print(title);

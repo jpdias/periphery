@@ -386,7 +386,7 @@ static void send_reboot_page() {
     "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
     "<title>Saved</title><link rel=\"stylesheet\" href=\"/style.css\"></head><body>"
-    "<h1>PTMonitor</h1>"
+    "<h1>periphery</h1>"
     "<div class=\"msg\"><strong>Saved.</strong><br>Rebooting... returning to config in "
     "<span id=\"c\">10</span>s.</div>"
     "<script>var n=10;var el=document.getElementById('c');"
@@ -403,7 +403,7 @@ static void send_reboot_page() {
 }
 
 // Sanitize a user hostname to a valid DNS label: lowercase alphanumerics and
-// hyphens only, no leading/trailing hyphen, non-empty. Falls back to "minidash".
+// hyphens only, no leading/trailing hyphen, non-empty. Falls back to "periphery".
 static String sanitize_hostname(const char *in) {
   String out;
   for (const char *p = in; *p && out.length() < 24; p++) {
@@ -413,7 +413,7 @@ static String sanitize_hostname(const char *in) {
   }
   while (out.length() && out[0] == '-') out.remove(0, 1);
   while (out.length() && out[out.length() - 1] == '-') out.remove(out.length() - 1);
-  if (out.length() == 0) out = "minidash";
+  if (out.length() == 0) out = "periphery";
   return out;
 }
 

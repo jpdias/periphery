@@ -1,8 +1,8 @@
 {
-  "name": "minidash-server",
+  "name": "periphery-server",
   "version": "1.0.0",
   "private": true,
-  "description": "PTMonitor API (Netlify Functions) + local dev server",
+  "description": "periphery API (Netlify Functions) + local dev server",
   "type": "module",
   "scripts": {
     "dev": "netlify dev",

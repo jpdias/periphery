@@ -1,7 +1,7 @@
-const STORE_KEY = "minidash-config";
+const STORE_KEY = "periphery-config";
 
 // Defaults externalized in config.js (the client-side analog of env.h).
-const D = window.MINIDASH_CONFIG || {};
+const D = window.PERIPHERY_CONFIG || {};
 
 let cfg = {
   lat: D.defaultLat ?? 41.17,
@@ -77,7 +77,7 @@ function widgetVisible(name) { return !(cfg.hiddenWidgets || []).includes(name);
 
 // ---- Alerts (tab title + toasts) ----------------------------------------
 
-const ALERT_STORE_KEY = "minidash-alerts";
+const ALERT_STORE_KEY = "periphery-alerts";
 
 // Widgets that can raise alerts. Each entry maps the widget id to a human label.
 // "uv" reads the forecast's daily UV max; "solar" fires on M/X-class flares.
@@ -101,14 +101,14 @@ function saveAlertStore(store) {
 
 // Flash an alert in the browser tab title, reverting shortly after.
 function flashTitle(count, label) {
-  const base = "PTMonitor";
+  const base = "periphery";
   document.title = `⚠ ${count} new ${label.toLowerCase()} · ${base}`;
   clearTimeout(titleTimer);
   titleTimer = setTimeout(() => { document.title = base; }, 8000);
 }
 function resetTitle() {
   clearTimeout(titleTimer);
-  document.title = "PTMonitor";
+  document.title = "periphery";
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) resetTitle(); });
 window.addEventListener("focus", resetTitle);

@@ -45,8 +45,8 @@
 
 // Captive portal AP credentials
 #ifndef AP_NAME
-#define AP_NAME "PTMonitor-Setup"
+#define AP_NAME "periphery-Setup"
 #endif
 #ifndef AP_PASS
-#define AP_PASS "ptmonitorpass"
+#define AP_PASS "peripherypass"
 #endif

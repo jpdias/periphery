@@ -1,8 +1,8 @@
-import { UPSTREAM_TIMEOUT_MS } from "./env.js";
+import { UPSTREAM_TIMEOUT_MS, ALLOWED_ORIGIN } from "./env.js";
 
 export function corsHeaders() {
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Accept-Encoding, Origin",
@@ -42,10 +42,10 @@ export function ok(data, extra = {}) {
 }
 
 // Raw passthrough for the device firmware: when the caller sends
-// "X-Minidash-Raw: 1", return the upstream body verbatim (headers stripped) so
+// "X-Periphery-Raw: 1", return the upstream body verbatim (headers stripped) so
 // the ESP8266 streaming parsers work unchanged. Used by all widget functions.
 export function rawResponse(event, status, body) {
-  if (event.headers?.["x-minidash-raw"] !== "1") return null;
+  if (event.headers?.["x-periphery-raw"] !== "1") return null;
   return new Response(typeof body === "string" ? body : JSON.stringify(body), {
     status,
     headers: {

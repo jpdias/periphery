@@ -3,7 +3,7 @@
 #include <WiFiManager.h>
 #include "config.h"
 
-// Starts WiFi (autoConnect) or spawns AP "PTMonitor-Setup" for first config.
+// Starts WiFi (autoConnect) or spawns AP "periphery-Setup" for first config.
 // Adds custom fields to the portal for location / timezone / display.
 void portal_begin();
 

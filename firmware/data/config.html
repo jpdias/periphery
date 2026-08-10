@@ -3,11 +3,11 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PTMonitor Config</title>
+    <title>periphery Config</title>
     <link rel="stylesheet" href="/style.css">
   </head>
   <body>
-    <h1>PTMonitor</h1>
+    <h1>periphery</h1>
     <div class="ctl">
       <div class="ctlrow">
         <span class="ctllbl">Display:</span>
@@ -76,8 +76,8 @@
             <button type="button" onclick="searchStations()">Search</button>
           </div>
           <div id="cpsResults" class="stnlist"></div>
-          <label for="apb">API base (Netlify, e.g. https://minidash.netlify.app)</label>
-          <input id="apb" data-json="api_base" value="{{ APB }}" placeholder="https://minidash.netlify.app">
+          <label for="apb">API base (Netlify, e.g. https://periphery.netlify.app)</label>
+          <input id="apb" data-json="api_base" value="{{ APB }}" placeholder="https://periphery.netlify.app">
           <div class="chk">
             <label class="cb">
               <input type="checkbox" data-json="use_api_proxy" {{ UAP }}> Use API proxy (route trains / flights / incidents through the API base)

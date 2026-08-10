@@ -1,14 +1,14 @@
 {
-  "name": "PTMonitor",
-  "short_name": "PTMonitor",
+  "name": "periphery",
+  "short_name": "periphery",
   "description": "Live dashboard of weather, incidents, trains, flights and moon phase.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23da291c'/><rect width='40' height='100' fill='%23046a38'/><circle cx='40' cy='50' r='15' fill='%23ffcc00'/><circle cx='40' cy='50' r='6' fill='none' stroke='%23da291c' stroke-width='2'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5' fill='%23090b0f'/><polygon points='50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5' fill='none' stroke='%23fe5c35' stroke-width='7'/><path d='M34 28 L66 28 L50 74 Z' fill='none' stroke='%23ffcc00' stroke-width='5'/></svg>",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

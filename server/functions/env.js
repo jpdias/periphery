@@ -8,6 +8,10 @@ export const env = (name, fallback) => {
   return v === undefined || v === "" ? fallback : v;
 };
 
+// Browser CORS allowlist: only origins listed here may call the API from a
+// browser. Comma-separated Netlify env var. Defaults to the GitHub Pages host.
+export const ALLOWED_ORIGIN = env("ALLOWED_ORIGIN", "https://jpdias.me");
+
 // --- Weather / Forecast (open-meteo) ---
 export const OPEN_METEO_BASE = env("OPEN_METEO_BASE", "https://api.open-meteo.com");
 export const OPEN_METEO_PATH = env("OPEN_METEO_PATH", "/v1/forecast");
