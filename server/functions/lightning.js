@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, cachedFetch } from "./utils.js";
 import { LIGHTNING_BASE, LIGHTNING_TTL, LIGHTNING_MAX } from "./env.js";
 
 // Lightning strikes from Blitzortung (relayed by pocketworld.org). The relay
@@ -6,6 +6,7 @@ import { LIGHTNING_BASE, LIGHTNING_TTL, LIGHTNING_MAX } from "./env.js";
 // the requested coordinates and report the nearest few. Direct Blitzortung
 // endpoints are ToS-gated, so we rely on the public relay.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

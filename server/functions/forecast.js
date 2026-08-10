@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal, toQuery } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal, toQuery } from "./utils.js";
 import { IPMA_BASE, OPEN_METEO_BASE, OPEN_METEO_PATH, FORECAST_TTL } from "./env.js";
 
 // Daily forecast. Inside Portugal we use IPMA open-data (nearest city, plus UV
@@ -87,6 +87,7 @@ const WTYPE_ICON = {
 };
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

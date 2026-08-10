@@ -1,5 +1,32 @@
 import { UPSTREAM_TIMEOUT_MS, ALLOWED_ORIGIN } from "./env.js";
 
+// Netlify's modern Functions runtime (v2) passes the handler a WHATWG Request
+// (req.method, req.url, req.headers as a Headers instance) instead of the
+// legacy Lambda event ({httpMethod, queryStringParameters, headers}). The dev
+// server builds the legacy shape. Normalize either into what the rest of this
+// codebase reads, so the same handler works locally and on Netlify.
+export function normalizeEvent(event) {
+  // Legacy v1 event (dev server builds this shape) — already has httpMethod.
+  if (event && typeof event.httpMethod === "string") return event;
+
+  // Modern v2 Request object.
+  const url = new URL(event.url);
+  const headers = {};
+  if (event.headers?.forEach) {
+    event.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+  }
+  return {
+    httpMethod: event.method,
+    path: url.pathname,
+    queryStringParameters: Object.fromEntries(url.searchParams),
+    headers,
+    rawUrl: event.url,
+    rawQuery: url.search.slice(1),
+  };
+}
+
 export function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,

@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal } from "./utils.js";
 import { IPMA_BASE, IPMA_WARNINGS_PATH, WARNINGS_TTL } from "./env.js";
 
 // Weather warnings (avisos) for Portugal from IPMA. The feed returns per-area
@@ -32,6 +32,7 @@ const CENTROIDS = {
 const LEVELS = { green: 0, yellow: 1, orange: 2, red: 3 };
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

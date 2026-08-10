@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
 import { APIABERTA_BASE, FUEL_PATH, FUEL_TTL, FUEL_MAX } from "./env.js";
 
 // Portuguese fuel prices from API Aberta (DGEG-sourced, ~06:55 daily, free).
@@ -8,6 +8,7 @@ import { APIABERTA_BASE, FUEL_PATH, FUEL_TTL, FUEL_MAX } from "./env.js";
 // The free tier of API Aberta is strictly rate-limited (429s under a 60s
 // polling client), so we cache the upstream result for a long in-process TTL.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

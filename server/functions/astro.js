@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail } from "./utils.js";
 
 // Astronomical calendar — annual meteor showers (IMO Working List data).
 // Peak dates are given as month/day and are stable year to year; the function
@@ -35,6 +35,7 @@ function isActive(s, now) {
 }
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

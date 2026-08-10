@@ -1,7 +1,8 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, toQuery, rawResponse, isInPortugal } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, toQuery, rawResponse, isInPortugal } from "./utils.js";
 import { ARC_GIS_URL, ARC_GIS_TOKEN, INCIDENT_RADIUS_M, INCIDENT_MAX, INCIDENT_TTL } from "./env.js";
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

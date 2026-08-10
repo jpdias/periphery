@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
 import { REN_BASE, REN_TTL, REN_MAX } from "./env.js";
 
 // Portuguese national grid live mix from the REN Data Hub (no auth). The API
@@ -11,6 +11,7 @@ import { REN_BASE, REN_TTL, REN_MAX } from "./env.js";
 // The OMIE day-ahead price endpoint was removed from the public API (404), so
 // `price` is left null.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

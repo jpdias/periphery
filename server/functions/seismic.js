@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
 import { IPMA_BASE, IPMA_SEISMIC_PATH, IPMA_SEISMIC_PATH_AZORES, SEISMIC_TTL, SEISMIC_MAX } from "./env.js";
 
 // Recent seismic activity for Portugal from IPMA's open-data feeds.
@@ -8,6 +8,7 @@ import { IPMA_BASE, IPMA_SEISMIC_PATH, IPMA_SEISMIC_PATH_AZORES, SEISMIC_TTL, SE
 // (lat,lon,time) and sort by time descending, tagging each event with its
 // distance from the observer.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

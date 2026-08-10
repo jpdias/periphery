@@ -1,10 +1,11 @@
-import { handleOptions, ok, fail, upstreamJson } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson } from "./utils.js";
 import { FX_BASE, FX_TTL, FX_SYMBOLS } from "./env.js";
 
 // EUR reference exchange rates from the European Central Bank, served by
 // Frankfurter (no API key, ~84 central banks aggregated). We also pull the
 // previous business day to compute a daily change for each pair.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

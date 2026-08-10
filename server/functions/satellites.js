@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamText, upstreamJson, toQuery } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamText, upstreamJson, toQuery } from "./utils.js";
 import { CELESTRAK_BASE, TLE_FALLBACK_BASE, SAT_TTL, SAT_DEFAULTS } from "./env.js";
 import {
   twoline2satrec, propagate, eciToEcf, ecfToLookAngles,
@@ -70,6 +70,7 @@ async function fetchTle(noradId) {
 }
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

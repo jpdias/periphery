@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamText, rawResponse } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamText, rawResponse } from "./utils.js";
 import { HORIZONS_BASE, HORIZONS_RTS_STEP, MOON_TTL } from "./env.js";
 
 // Sun + Moon rise/transit/set from the NASA JPL Horizons observer ephemeris
@@ -89,6 +89,7 @@ async function rtsFor(cmd, siteCoord, start, stop) {
 }
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

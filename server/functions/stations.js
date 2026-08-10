@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, rawResponse } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, rawResponse } from "./utils.js";
 import { TRAIN_HOST, TRAIN_PATH, TRAIN_UA } from "./env.js";
 
 // GET /api/stations?q=<name> -> station search proxy for the IP trains API.
@@ -6,6 +6,7 @@ import { TRAIN_HOST, TRAIN_PATH, TRAIN_UA } from "./env.js";
 // IP API sends no Access-Control-Allow-Origin). Returns [{id,name}] from the
 // upstream "response" array.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

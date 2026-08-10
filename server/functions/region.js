@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams } from "./utils.js";
 
 // GET /api/region?lat=<y>&lon=<x> -> which PT widgets apply to this location.
 // Returns { in_pt, region } where region is "mainland" | "madeira" | "azores"
@@ -6,6 +6,7 @@ import { handleOptions, ok, fail, requireParams } from "./utils.js";
 // incidents, IPMA warnings) when the observer is outside Portugal, and to let
 // the forecast fall back to a generic source.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

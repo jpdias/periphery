@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, upstreamJson } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson } from "./utils.js";
 import { SWPC_BASE, SOLAR_TTL } from "./env.js";
 
 // Solar activity from NOAA SWPC GOES products. When lat/lon are supplied, the
@@ -8,6 +8,7 @@ import { SWPC_BASE, SOLAR_TTL } from "./env.js";
 //   - geomagnetic_latitude + aurora: whether the current Kp is strong enough for
 //     aurora to reach the user's (dipole-approximated) geomagnetic latitude.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

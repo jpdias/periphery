@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo } from "./utils.js";
 import { APA_GEO_BASE, RADNET_SERVICE, RADNET_TTL, RADNET_MAX } from "./env.js";
 
 // Gamma dose-rate in air from Portugal's RADNET (APA). RADNET is the national
@@ -6,6 +6,7 @@ import { APA_GEO_BASE, RADNET_SERVICE, RADNET_TTL, RADNET_MAX } from "./env.js";
 // H*(10) ambient dose rate in nSv/h). We pull the latest reading per station
 // and return the one closest to the requested coordinates.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams } from "./utils.js";
 import { UPSTREAM_TIMEOUT_MS } from "./env.js";
 
 // Uptime monitors: checks a configurable list of HTTP(S) sites and reports
@@ -6,6 +6,7 @@ import { UPSTREAM_TIMEOUT_MS } from "./env.js";
 // so no redeploy is needed to add a monitor. HEAD is used first; a 405/501
 // falls back to GET, which also guarantees we have a body to size.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, upstreamJson, cachedFetch, upstreamText } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson, cachedFetch, upstreamText } from "./utils.js";
 import { SWPC_BASE, SOLAR_TTL } from "./env.js";
 
 // Radio propagation conditions for HF bands, derived from live space weather:
@@ -11,6 +11,7 @@ import { SWPC_BASE, SOLAR_TTL } from "./env.js";
 // Band "quality" is a rule-of-thumb estimate (NOAA/ham lore), not an exact MUF:
 // it's a heuristic dashboard, so treat numbers as guidance.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

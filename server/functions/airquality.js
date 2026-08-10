@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo } from "./utils.js";
 import { APA_GEO_BASE, QAR_SERVICE, QAR_POLUENTES, AIRQUALITY_TTL } from "./env.js";
 
 // Air quality from APA's QualAr. The QAR_global layer carries the global IQAR
@@ -6,6 +6,7 @@ import { APA_GEO_BASE, QAR_SERVICE, QAR_POLUENTES, AIRQUALITY_TTL } from "./env.
 // station with a reported index, then enrich it with the per-pollutant indices
 // from the QAR_poluentes layer (O3, SO2, NO2, PM10, PM2.5).
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

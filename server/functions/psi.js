@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, upstreamJson, cachedFetch } from "./utils.js";
 import { PSI_BASE, PSI_SYMBOL, PSI_TTL } from "./env.js";
 
 // Lisbon stock index (PSI) from Yahoo Finance's chart endpoint. This is the
@@ -8,6 +8,7 @@ import { PSI_BASE, PSI_SYMBOL, PSI_TTL } from "./env.js";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 

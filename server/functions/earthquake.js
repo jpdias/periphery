@@ -1,10 +1,11 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
 import { USGS_BASE, USGS_FEED, EARTHQUAKE_TTL, EARTHQUAKE_MAX } from "./env.js";
 
 // Recent earthquakes from the USGS GeoJSON feed, filtered to a radius around
 // the requested location and sorted by magnitude. Feeds have no CORS and are
 // public domain, so this is a thin proxy + geo filter.
 export default async function handler(event) {
+  event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 
