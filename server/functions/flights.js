@@ -1,4 +1,4 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch, rawResponse } from "./utils.js";
 import { ADSB_BASE, ADSB_PATH, FLIGHTS_TTL, FLIGHT_DEFAULT_DIST } from "./env.js";
 
 export default async function handler(event) {
@@ -11,6 +11,14 @@ export default async function handler(event) {
 
   const dist = params.dist ?? FLIGHT_DEFAULT_DIST;
   const url = `${ADSB_BASE}${ADSB_PATH}/lat/${params.lat}/lon/${params.lon}/dist/${dist}`;
+
+  // Raw passthrough: the firmware consumes the upstream adsb.lol body unchanged.
+  if (event.headers?.["x-periphery-raw"] === "1") {
+    const { status, body } = await upstreamJson(url);
+    const raw = rawResponse(event, status, body);
+    if (raw) return raw;
+    return fail(502, "Upstream flights request failed", { upstreamStatus: status });
+  }
 
   // Cache keyed on the request. Upstream rate-limits (429) are not cached, but
   // a previous good response is served for the TTL while it recovers.

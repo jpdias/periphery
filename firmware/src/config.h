@@ -33,7 +33,6 @@ struct Config {
   char  ip_station[16] = {0};     // IP station node ID for the Trains screen (e.g. "9402006")
   char  ip_station_name[40] = {0}; // Station display name (prefill for the web search UI)
   char  api_base[128] = {0};      // Netlify site base URL, e.g. "https://periphery.netlify.app"
-  bool  use_api_proxy = false;    // route widget fetches through the api_base proxy endpoints
   bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true, true };
   bool  backlight_control = true;   // drive backlight via transistor on D8/GPIO15
   bool  backlight_active_high = true;// GPIO level that turns the backlight ON

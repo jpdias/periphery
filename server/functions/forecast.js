@@ -1,4 +1,4 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal, toQuery } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal, toQuery, rawResponse } from "./utils.js";
 import { IPMA_BASE, OPEN_METEO_BASE, OPEN_METEO_PATH, FORECAST_TTL } from "./env.js";
 
 // Daily forecast. Inside Portugal we use IPMA open-data (nearest city, plus UV
@@ -97,6 +97,22 @@ export default async function handler(event) {
   const lat = Number(params.lat);
   const lon = Number(params.lon);
   if (!isFinite(lat) || !isFinite(lon)) return fail(400, "Invalid coordinates");
+
+  // Raw passthrough: the firmware consumes the upstream Open-Meteo daily body
+  // unchanged, bypassing the IPMA/geofence shaping.
+  if (event.headers?.["x-periphery-raw"] === "1") {
+    const q = toQuery({
+      latitude: lat,
+      longitude: lon,
+      daily: "weather_code,temperature_2m_max,temperature_2m_min",
+      forecast_days: 4,
+      timezone: "auto",
+    });
+    const { status, body } = await upstreamJson(`${OPEN_METEO_BASE}${OPEN_METEO_PATH}?${q}`);
+    const raw = rawResponse(event, status, body);
+    if (raw) return raw;
+    return fail(502, "Upstream forecast request failed", { upstreamStatus: status });
+  }
 
   // Outside Portugal: use the generic Open-Meteo daily forecast.
   if (!isInPortugal(lat, lon)) {

@@ -1,36 +1,13 @@
 #pragma once
 // Build-time settings. This file is gitignored - never commit the real values.
-// The #ifndef guards below act as fallbacks: public API hosts get their defaults
-// so the build always compiles, while secrets (incidents path, wifi creds) are
-// empty until filled in here.
+// The #ifndef guards below act as fallbacks so the build always compiles.
+//
+// All widget data (weather, forecast, IP, moon, trains, flights, incidents,
+// stations) now goes through the Netlify proxy configured in cfg.api_base —
+// the only direct upstream left is NTP. The former direct hosts (IP timetable,
+// ArcGIS, adsb, sunrise-sunset, Open-Meteo, ipinfo) were removed from the
+// firmware as part of the "always use api" migration.
 
-// Incidents (ArcGIS FeatureServer) - org-specific, keep private
-#ifndef INCIDENTS_HOST
-#define INCIDENTS_HOST "services-eu1.arcgis.com"
-#endif
-#ifndef INCIDENTS_PATH
-#define INCIDENTS_PATH "/VlrHb7fn5ewYhX6y/arcgis/rest/services/OcorrenciasSite/FeatureServer/0/query"
-#endif
-
-// Public API hosts
-#ifndef FLIGHT_HOST
-#define FLIGHT_HOST "opendata.adsb.fi"
-#endif
-#ifndef MOON_HOST
-#define MOON_HOST "api.sunrise-sunset.org"
-#endif
-#ifndef TRAIN_HOST_DEF
-#define TRAIN_HOST_DEF "www.infraestruturasdeportugal.pt"
-#endif
-#ifndef TRAIN_PATH_DEF
-#define TRAIN_PATH_DEF "/negocios-e-servicos"
-#endif
-#ifndef WEATHER_HOST
-#define WEATHER_HOST "api.open-meteo.com"
-#endif
-#ifndef EXTIP_HOST
-#define EXTIP_HOST "ipinfo.io"
-#endif
 #ifndef NTP_HOST
 #define NTP_HOST "pool.ntp.org"
 #endif

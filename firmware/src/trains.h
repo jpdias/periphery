@@ -21,10 +21,13 @@ struct TrainData {
   bool lastOk = false;         // result of that last fetch attempt
 };
 
-// Non-blocking train departures fetcher. Uses the public Infraestruturas de
-// Portugal (IP) timetable API — no API keys, credentials or cookies; the only
-// header needed is a browser User-Agent. Refreshes every ~5 min; the fetch is
-// gated on an IP station node ID being configured (cfg.ip_station).
+// Non-blocking train departures fetcher. Fetches the timetable through the
+// Netlify proxy (/api/trains), which forwards to the public Infraestruturas de
+// Portugal (IP) timetable API — no API keys, credentials or cookies; only a
+// browser User-Agent is sent. Refresh is smart-TTL'd: after a successful fetch
+// it waits until the next departure has passed (clamped to 1-30 min) instead of
+// polling on a fixed timer. Gated on an IP station node ID being configured
+// (cfg.ip_station).
 void trains_begin();
 void trains_tick();
 bool trains_updated();          // true once after a refresh

@@ -2,6 +2,7 @@
 #include "portal.h"
 #include "env.h"
 #include "nettime.h"
+#include "netproxy.h"
 #include "control.h"
 #include "tlslock.h"
 #include <ESP8266WebServer.h>
@@ -128,7 +129,6 @@ static String resolve_token(const String& tok) {
   if (tok == "CPS")        return htmlEscape(cfg.ip_station);
   if (tok == "CSN")        return htmlEscape(cfg.ip_station_name);
   if (tok == "APB")        return htmlEscape(cfg.api_base);
-  if (tok == "UAP")        return cfg.use_api_proxy ? "checked" : "";
   if (tok == "BLC")        return cfg.backlight_control ? "checked" : "";
   if (tok == "BLH")        return cfg.backlight_active_high ? "checked" : "";
   if (tok == "IP")         return WiFi.localIP().toString();
@@ -273,11 +273,13 @@ static String json_escape(const String &s) {
 // GET /api/stations?q=<name> -> same-origin proxy for the IP station-name search.
 // The IP API sends no Access-Control-Allow-Origin, so a browser page served from
 // the device cannot fetch it cross-origin; this endpoint does the HTTPS fetch
-// device-side and returns a small JSON list [{id,name}]. Public API, no secrets.
+// device-side through the Netlify proxy (/api/stations) and returns a small JSON
+// list [{id,name}]. Public API, no secrets.
 static void handle_api_stations() {
   String q = server.arg("q");
   q.trim();
   if (!q.length()) { server.send(400, "application/json", "{\"error\":\"missing q\"}"); return; }
+  if (!cfg.api_base[0]) { server.send(500, "application/json", "{\"error\":\"api base not set\"}"); return; }
 
   if (!tls_try_acquire()) {
     server.send(503, "application/json", "{\"error\":\"tls busy\"}");
@@ -291,12 +293,13 @@ static void handle_api_stations() {
   c->setTimeout(3000);
 
   String out = "{\"stations\":[]}";
-  if (c->connect(TRAIN_HOST_DEF, 443)) {
-    String path = String(TRAIN_PATH_DEF) + "/estacao-nome/" + url_encode(q);
+  if (c->connect(proxy_host(), 443)) {
+    String path = proxy_path("stations", "q=" + url_encode(q));
     c->print(String("GET ") + path + " HTTP/1.1\r\n" +
-             "Host: " + TRAIN_HOST_DEF + "\r\n" +
+             "Host: " + proxy_host() + "\r\n" +
              "User-Agent: " + IP_UA + "\r\n" +
              "Accept: application/json\r\n" +
+             "X-Periphery-Raw: 1\r\n" +
              "Connection: close\r\n\r\n");
     unsigned long t0 = millis();
     uint8_t m = 0;

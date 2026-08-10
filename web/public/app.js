@@ -68,7 +68,7 @@ async function apiGet(widget, params = {}) {
 
   const cache = readApiCache();
   const hit = cache[key];
-  if (hit && Date.now() - hit.ts < ttl) {
+  if (hit && Date.now() < (hit.expires ?? hit.ts + ttl)) {
     return hit.json;
   }
 
@@ -80,7 +80,7 @@ async function apiGet(widget, params = {}) {
   }
 
   try {
-    cache[key] = { ts: Date.now(), json };
+    cache[key] = { ts: Date.now(), expires: Date.now() + ttl, json };
     const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
     const pruned = entries.slice(0, 80);
     localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
@@ -97,6 +97,21 @@ function readApiCache() {
 
 function bustApiCache() {
   try { localStorage.removeItem(API_CACHE_KEY); } catch { /* ignore */ }
+}
+
+// Smart TTL: move a widget's freshness window to an absolute time, so it only
+// refetches when its data actually goes stale (e.g. when the next train departs
+// or the next satellite pass ends) instead of on a fixed timer.
+function touchCache(widget, params = {}, ttlMs) {
+  const q = new URLSearchParams(params).toString();
+  const key = `${widget}?${q}`;
+  const cache = readApiCache();
+  const hit = cache[key];
+  if (hit && ttlMs > 0) {
+    hit.ts = Date.now();
+    hit.expires = Date.now() + ttlMs;
+    try { localStorage.setItem(API_CACHE_KEY, JSON.stringify(cache)); } catch { /* ignore */ }
+  }
 }
 
 // Client-side freshness window per widget. Slow-moving data (moon/sun, meteor
@@ -781,6 +796,17 @@ function collectTrainRows(response) {
   return rows;
 }
 
+// Epoch ms of the next occurrence of a "HH:MM" local time (today, or tomorrow
+// if that time has already passed). Used to schedule the smart trains refresh.
+function nextDepartureMs(hhmm) {
+  const m = /^(\d{2}):(\d{2})/.exec(hhmm || "");
+  if (!m) return 0;
+  const d = new Date();
+  d.setHours(+m[1], +m[2], 0, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
 async function loadTrains() {
   const el = document.getElementById("train-list");
   document.getElementById("train-station").textContent = cfg.ipStationName || "";
@@ -794,8 +820,10 @@ async function loadTrains() {
     // few. Cap at ~12h ahead so we never hammer the upstream.
     const want = 4, MAX_SHIFT = 12;
     let rows = [], seen = new Set();
+    const wins = [];
     for (let shift = 0; shift <= MAX_SHIFT && rows.length < want; shift += 3) {
       const win = trainWindow(shift);
+      wins.push(win);
       const { data } = await apiGet("trains", {
         station: cfg.ipStation,
         date: win.date, start: win.start, end: win.end,
@@ -823,6 +851,15 @@ async function loadTrains() {
       </li>`;
     }).join("");
     stamp("trains");
+    // Smart TTL: refresh only when the next departure has passed. Extend every
+    // window we fetched to that moment so quiet stations don't refetch mid-list.
+    const nextMs = nextDepartureMs(top[0].time);
+    if (nextMs) {
+      const ttl = Math.max(60_000, Math.min(nextMs - Date.now(), 12 * 3600 * 1000));
+      for (const w of wins) {
+        touchCache("trains", { station: cfg.ipStation, date: w.date, start: w.start, end: w.end }, ttl);
+      }
+    }
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
   }
@@ -1296,6 +1333,19 @@ async function loadSatellites() {
       </li>`;
     }).join("");
     stamp("satellites");
+    // Smart TTL: refresh when the next pass has ended — the display is stale
+    // the moment the earliest upcoming pass sets.
+    let nextSet = Infinity;
+    for (const s of sats) {
+      if (s.next && s.next.set) {
+        const t = Date.parse(s.next.set);
+        if (isFinite(t) && t < nextSet) nextSet = t;
+      }
+    }
+    if (isFinite(nextSet)) {
+      const ttl = Math.max(60_000, Math.min(nextSet - Date.now(), 12 * 3600 * 1000));
+      touchCache("satellites", { lat: cfg.lat, lon: cfg.lon, sats: JSON.stringify(cfg.satellites) }, ttl);
+    }
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
   }

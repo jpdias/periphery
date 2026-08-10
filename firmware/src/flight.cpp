@@ -8,7 +8,6 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
-static const char* FL_HOST = FLIGHT_HOST;
 static const uint16_t FL_PORT = 443;
 static const unsigned long FL_INTERVAL = 30000;  // 30s refresh (TLS is heap-heavy)
 static const uint32_t FL_MIN_HEAP = 8192;           // streaming parse: ~5-6KB contiguous is enough
@@ -100,22 +99,14 @@ static void classify(const char *cat, long dbFlags, char *out) {
   strcpy(out, "CIV");
 }
 
-// Build the ADS-B request for the configured location/range. In direct mode the
-// host is opendata.adsb.fi and the path is /api/v2/lat/..; in proxy mode it's
-// /api/flights?lat=..&lon=..&dist=..
+// Build the ADS-B request through the Netlify proxy: /api/flights?lat=..&lon=..
+// &dist=.. (the function forwards to adsb.lol server-side).
 static bool flight_request(String &host, String &url) {
-  if (proxy_enabled()) {
-    host = proxy_host();
-    String q = "lat=" + String(cfg.lat, 4) +
-               "&lon=" + String(cfg.lon, 4) +
-               "&dist=" + String(cfg.flight_range);
-    url = proxy_path("flights", q);
-  } else {
-    host = FL_HOST;
-    url = String("/api/v2/lat/") + String(cfg.lat, 4) +
-          "/lon/" + String(cfg.lon, 4) +
-          "/dist/" + String(cfg.flight_range);
-  }
+  host = proxy_host();
+  String q = "lat=" + String(cfg.lat, 4) +
+             "&lon=" + String(cfg.lon, 4) +
+             "&dist=" + String(cfg.flight_range);
+  url = proxy_path("flights", q);
   return true;
 }
 
@@ -179,6 +170,7 @@ static bool skip_headers(Stream &s) {
 void flight_tick() {
   if (cfg.flight_range <= 0) return;
   if (WiFi.status() != WL_CONNECTED) return;
+  if (!cfg.api_base[0]) return;   // proxy required
 
   // Global safety: if any active phase runs too long, abort the whole cycle so
   // the FSM can never get wedged (which shows as a stuck countdown at 0).
@@ -211,14 +203,14 @@ void flight_tick() {
       break;
 
     case P_CONN:
-      if (cli->connect(proxy_enabled() ? proxy_host() : FL_HOST, FL_PORT)) {
+      if (cli->connect(proxy_host(), FL_PORT)) {
         String host, url;
         flight_request(host, url);
         String req = String("GET ") + url + " HTTP/1.1\r\n" +
                      "Host: " + host + "\r\n" +
-                     "User-Agent: periphery\r\n";
-        if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-        req += "Connection: close\r\n\r\n";
+                     "User-Agent: periphery\r\n" +
+                     "X-Periphery-Raw: 1\r\n" +
+                     "Connection: close\r\n\r\n";
         cli->print(req);
         phase = P_WAIT;
         timer = millis();
@@ -261,6 +253,7 @@ void flight_tick() {
 bool flight_fetch_blocking(unsigned long timeoutMs) {
   if (cfg.flight_range <= 0) return false;
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[FLT] block: no wifi"); return false; }
+  if (!cfg.api_base[0]) return false;   // proxy required
   if (!tls_try_acquire()) { mlog.println("[FLT] block: tls busy"); return false; }
 
   BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
@@ -269,16 +262,16 @@ bool flight_fetch_blocking(unsigned long timeoutMs) {
   c->setBufferSizes(4096, 512);
   c->setTimeout(3000);
 
-  String host = proxy_enabled() ? String(proxy_host()) : String(FL_HOST);
+  String host = String(proxy_host());
   bool ok = false;
   if (c->connect(host.c_str(), FL_PORT)) {
     String url;
     flight_request(host, url);
     String req = String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: " + host + "\r\n" +
-                 "User-Agent: periphery\r\n";
-    if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-    req += "Connection: close\r\n\r\n";
+                 "User-Agent: periphery\r\n" +
+                 "X-Periphery-Raw: 1\r\n" +
+                 "Connection: close\r\n\r\n";
     c->print(req);
     // Wait for the body, then parse straight from the stream.
     unsigned long t0 = millis();
