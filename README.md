@@ -9,23 +9,43 @@ the config page; disabled screens are skipped.
 | # | Screen | Shows |
 |---|--------|-------|
 | 1 | **Clock** | Large time + date, weather summary, WiFi bars, sync dot, and the closest flight on the bottom line |
-| 2 | **ESPHome** | Live values from the configured ESPHome sensors |
-| 3 | **Forecast** | 3-day weather forecast labeled by weekday |
-| 4 | **Weather Detail** | Extended current-conditions readout |
-| 5 | **Monitors** | HTTP reachability status for the configured hosts |
-| 6 | **Flight Radar** | Nearby aircraft on a range-ring radar (see below) |
-| 7 | **System** | Heap / fragmentation, WiFi RSSI, SSID, IP, MAC, CPU, flash, uptime |
+| 2 | **Incidents** | The 5 most recent incidents from the ANEPC/ArcGIS feed, nearest-first, with a **geofence popup** when one is within range (see below) |
+| 3 | **ESPHome** | Live values from the configured ESPHome sensors |
+| 4 | **Forecast** | 3-day weather forecast labeled by weekday |
+| 5 | **Weather Detail** | Extended current-conditions readout |
+| 6 | **Monitors** | HTTP reachability status for the configured hosts |
+| 7 | **Flight Radar** | Nearby aircraft on a range-ring radar (see below) |
+| 8 | **System** | Heap / fragmentation, WiFi RSSI, SSID, IP, MAC, CPU, flash, uptime |
 
 Every screen shows a top bar with WiFi signal bars, a time-sync dot (green =
 synced, red = not), and a right-aligned screen counter (`idx/total`).
 
-- **Short press** cycles to the next enabled screen.
+- **Short press** cycles to the next enabled screen. While a geofence popup is
+  up, the first short press **dismisses the popup** instead.
 - **Long press (≥600ms)** toggles the whole display off/on (screen contents +
   backlight). The backlight is only physically switched if the optional
   transistor is fitted (see below), but the screen is always blanked.
 
 The display turns off automatically during configurable night hours (default
 23:00–07:00).
+
+### Incidents & geofence popup
+The 5 most recent incidents (by occurrence time) are fetched from the ANEPC
+Ocorrencias ArcGIS FeatureServer (host/path configured in `src/env.h`, which is
+gitignored) every ~15 min over TLS, limited server-side
+(`orderByFields=DataOcorrencia DESC`, `resultRecordCount=5`) so the payload stays
+tiny, and listed on the **Incidents** screen (with a last-refresh timestamp in the
+footer). The screen is cropped to the geofence radius — only incidents within
+`INCIDENT_RADIUS_M` are shown, each on three lines: natureza (code stripped),
+localidade, then distance + estado.
+
+When an incident enters the geofence radius (`INCIDENT_RADIUS_M`, default
+10 000 m / 10 km, compile-time constant in `src/incidents.h`) a full-screen
+**ALERTA** popup opens with its type, status, location and distance. It
+auto-dismisses after 10 minutes or on the first button press; dismissed incidents
+won't re-pop until a new one appears. The screen is enabled/disabled via the
+**Incidents** checkbox on the config page (disabling it also disables the
+popup/fetch).
 
 ### Flight Radar
 Nearby aircraft are fetched from the [adsb.fi](https://adsb.fi) open data API
@@ -225,6 +245,8 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
 - Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
+- Incidents: ANEPC Ocorrencias ArcGIS FeatureServer over TLS, 5 most recent by
+  occurrence date, ~15 min refresh
 - Sun/moon: [sunrise-sunset.org v2](https://sunrise-sunset.org/api) over **plain
   HTTP** (`api.sunrise-sunset.org`, no API key, no TLS — the endpoint explicitly
   supports non-TLS for ESP8266). Returns sunrise/set, moonrise/set, moon phase name
@@ -250,7 +272,8 @@ data...` → one line per step, `+`=done / `!`=fail / `.`=working):
 2. **Weather** + **Forecast** + **External IP** — plain HTTP, no TLS contention.
 3. **Sun / Moon** — TLS to USNO; runs *alone* as the first TLS session.
 4. **Flight radar** — TLS to adsb.fi; runs only after moon released the lock.
-5. **Ready** — hand off to the main loop.
+5. **Incidents** — TLS to ArcGIS; runs only after flight released the lock (when the screen is enabled).
+6. **Ready** — hand off to the main loop.
 
 Each step either completes or times out (12s) before the next starts, so there's no
 overlap of the two TLS sessions and the radar/moon can never wedge as they used to.

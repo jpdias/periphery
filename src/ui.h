@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "nettime.h"
 #include "flight.h"
+#include "incidents.h"
 
 void ui_begin();
 void ui_poweroff();
@@ -30,6 +31,9 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
                      const Weather &w, bool metrics, int rssi, String intIp, String extIp, unsigned long uptime);
 void ui_screen_forecast(int h, int m, int s, const Forecast &f);
 void ui_screen_detail(int h, int m, int s, const Weather &w);
+void ui_screen_incidents();   // nearest incidents list (screen 2)
+void ui_popup_show(const Incident &inc);   // geofence alert overlay
+void ui_clear();   // blank the whole panel (used after the popup closes)
 void ui_screen_monitors();
 void ui_screen_esphome();
 void ui_screen_flight(const FlightData &fd, int rangeNm);

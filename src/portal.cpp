@@ -1,5 +1,6 @@
 #include "logbuf.h"
 #include "portal.h"
+#include "env.h"
 #include "nettime.h"
 #include "control.h"
 #include <ESP8266WebServer.h>
@@ -332,7 +333,7 @@ void portal_begin() {
   wm.addParameter(&p_eh);
   wm.addParameter(&p_mon);
 
-  bool res = wm.autoConnect("miniDash-Setup", "minidashpass");
+  bool res = wm.autoConnect(AP_NAME, AP_PASS);
   if (!res) {
     mlog.println("Failed to connect, restarting");
     ESP.restart();

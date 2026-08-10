@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "nettime.h"
 #include "config.h"
+#include "env.h"
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
@@ -8,7 +9,7 @@
 #include <time.h>
 
 static WiFiUDP ntpUDP;
-static NTPClient ntp(ntpUDP, "pool.ntp.org", 0, 600000);
+static NTPClient ntp(ntpUDP, NTP_HOST, 0, 600000);
 static bool gSynced = false;
 static unsigned long gLastSync = 0;
 static unsigned long gLastAttempt = 0;
@@ -203,7 +204,7 @@ bool parse_extip_body(const String &body, String &ip) {
 
 bool weather_fetch(float lat, float lon, Weather &w) {
   if (WiFi.status() != WL_CONNECTED) return false;
-  String host = "api.open-meteo.com";
+  String host = WEATHER_HOST;
   String url = "/v1/forecast?latitude=" + String(lat, 4) +
                "&longitude=" + String(lon, 4) +
                "&current=temperature_2m,relative_humidity_2m,weather_code" +
@@ -218,7 +219,7 @@ bool weather_fetch(float lat, float lon, Weather &w) {
 
 bool forecast_fetch(float lat, float lon, Forecast &f) {
   if (WiFi.status() != WL_CONNECTED) return false;
-  String host = "api.open-meteo.com";
+  String host = WEATHER_HOST;
   String url = "/v1/forecast?latitude=" + String(lat, 4) +
                "&longitude=" + String(lon, 4) +
                "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
@@ -230,7 +231,7 @@ bool forecast_fetch(float lat, float lon, Forecast &f) {
 }
 
 String external_ip_fetch() {
-  String host = "ipinfo.io";
+  String host = EXTIP_HOST;
   String url = "/json";
   String body;
   if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[IP] request failed"); return String(); }

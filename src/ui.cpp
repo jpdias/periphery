@@ -21,6 +21,18 @@ static bool ui_on = true;
 // dropping any other non-ASCII bytes.
 //   µ (0xC2 0xB5) -> u     ³ (0xC2 0xB3) -> 3     ² (0xC2 0xB2) -> 2
 //   ° (0xC2 0xB0) -> space  – — (0xE2 0x80 0x93/94) -> -
+//   Latin-1 accents (0xC3 0x80..0xBF) -> plain ASCII (Ã -> A, é -> e, ...)
+static const char SANITIZE_C3[64] = {
+  'A','A','A','A','A','A','A','C',  // À Á Â Ã Ä Å Æ Ç
+  'E','E','E','E','I','I','I','I',  // È É Ê Ë Ì Í Î Ï
+  'D','N','O','O','O','O','O','x',  // Ð Ñ Ò Ó Ô Õ Ö ×
+  'O','U','U','U','U','Y','T','B',  // Ø Ù Ú Û Ü Ý Þ ß
+  'a','a','a','a','a','a','a','c',  // à á â ã ä å æ ç
+  'e','e','e','e','i','i','i','i',  // è é ê ë ì í î ï
+  'd','n','o','o','o','o','o','/',  // ð ñ ò ó ô õ ö ÷
+  'o','u','u','u','u','y','t','y'   // ø ù ú û ü ý þ ÿ
+};
+
 void sanitize_ascii(char *s) {
   char *r = s, *w = s;
   while (*r) {
@@ -36,6 +48,9 @@ void sanitize_ascii(char *s) {
       else if (n == 0xAE) { *w++ = '(', *w++ = 'R', *w++ = ')'; } // ®
       else if (n == 0xA9) { *w++ = '(', *w++ = 'C', *w++ = ')'; } // ©
       r += 2;
+    } else if (c == 0xC3 && (unsigned char)r[1] >= 0x80 && (unsigned char)r[1] <= 0xBF) {
+      *w++ = SANITIZE_C3[(unsigned char)r[1] - 0x80];
+      r += 2;
     } else if (c == 0xE2 && (unsigned char)r[1] == 0x80) {
       unsigned char n = (unsigned char)r[2];
       if (n == 0x93 || n == 0x94) *w++ = '-';  // – —
@@ -46,6 +61,46 @@ void sanitize_ascii(char *s) {
     }
   }
   *w = 0;
+}
+
+// Abbreviate a place name for compact display: keep the last word whole and the
+// initial of each capitalized word before it, joined by spaces.
+//   "Vila de Conde"                 -> "V Conde"
+//   "Uniao de Freguesias de Serta"  -> "UF Serta"
+static void abbrev_place(char *s) {
+  // Trim trailing spaces so the last-word scan below is exact.
+  size_t len = strlen(s);
+  while (len > 0 && s[len - 1] == ' ') s[--len] = 0;
+  if (len == 0) return;
+
+  // Start of the last word (after the final space).
+  char *last = s;
+  for (char *p = s; *p; p++) {
+    if (*p == ' ') last = p + 1;
+  }
+  if (last == s) return;   // single word, nothing to shorten
+
+  // Collect the initial of every capitalized word before the last one.
+  char ab[24];
+  int n = 0;
+  char *w = s;
+  while (w < last) {
+    while (w < last && *w == ' ') w++;
+    if (w >= last) break;
+    if (*w >= 'A' && *w <= 'Z') {
+      if (n < (int)sizeof(ab) - 1) ab[n++] = *w;
+    }
+    while (w < last && *w != ' ') w++;
+  }
+
+  // Rebuild as "<initials> <last word>".
+  char out[40];
+  int o = 0;
+  for (int i = 0; i < n; i++) out[o++] = ab[i];
+  if (n > 0) out[o++] = ' ';
+  for (const char *p = last; *p; p++) out[o++] = *p;
+  out[o] = 0;
+  strcpy(s, out);
 }
 
 // Print a temperature value followed by a hand-drawn degree glyph and unit,
@@ -128,7 +183,7 @@ void ui_screen_boot(const char *title) {
   tft.setCursor(2, 14);
   tft.print(title);
   tft.drawFastHLine(0, 24, 128, ST7735_BLUE);
-  // reserve step lines 0..5 starting at y=32, 14px apart
+  // reserve step lines 0..6 starting at y=32, 14px apart
 }
 
 void ui_boot_step(int idx, const char *label, BootStep st) {
@@ -251,7 +306,7 @@ void ui_screen_tag(int idx, int total) {
 // HH:MM fills the width (size 3), :SS at far right (size 2) on the same line.
 void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
-  tft.fillRect(0, 0, 128, 52, ST7735_BLACK);
+  tft.fillRect(0, 0, 128, 44, ST7735_BLACK);
 
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
@@ -287,12 +342,14 @@ void ui_draw_seconds(int s) {
 
 void ui_draw_uptime(unsigned long uptime) {
   char buf[16];
-  // Must match the uptime position drawn by ui_draw_metrics (y=138) so the
+  // Must match the uptime position drawn by ui_draw_metrics (y=112) so the
   // per-second tick and full redraws don't disagree and cause a vertical jump.
-  tft.fillRect(0, 138, 128, 10, ST7735_BLACK);
+  // 8px box = exactly the size-1 glyph row, so it never erases the separator
+  // line drawn at y=121 above the alert count.
+  tft.fillRect(0, 112, 128, 8, ST7735_BLACK);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(2, 138);
+  tft.setCursor(2, 112);
   unsigned long up = uptime / 1000;
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);
@@ -306,10 +363,30 @@ static void draw_plane_icon(int cx, int cy, uint16_t col) {
   tft.drawFastHLine(cx - 1, cy + 4, 3, col);  // tailplane
 }
 
+// Small warning triangle (filled) with a black exclamation, ~8x8, centered
+// at (cx,cy). Used at the start of the main screen's alert line.
+static void draw_alert_icon(int cx, int cy, uint16_t col) {
+  tft.fillTriangle(cx, cy - 4, cx - 4, cy + 4, cx + 4, cy + 4, col);
+  tft.fillRect(cx - 1, cy - 2, 2, 3, ST7735_BLACK);   // exclamation stem
+  tft.fillRect(cx - 1, cy + 2, 2, 1, ST7735_BLACK);   // exclamation dot
+}
+
+// Small thermometer, ~8x10, centered at (cx,cy).
+static void draw_temp_icon(int cx, int cy, uint16_t col) {
+  tft.drawFastVLine(cx, cy - 4, 5, col);   // stem
+  tft.fillCircle(cx, cy + 3, 3, col);      // bulb
+}
+
+// Small water drop, ~8x9, centered at (cx,cy).
+static void draw_drop_icon(int cx, int cy, uint16_t col) {
+  tft.fillTriangle(cx, cy - 4, cx - 4, cy + 3, cx + 4, cy + 3, col);
+  tft.fillCircle(cx, cy + 3, 4, col);
+}
+
 // Auto-refreshing closest-flight readout on a single line at the bottom.
 // Drawn in its own isolated box so it can update without a full-screen redraw.
 void ui_draw_flightinfo(const FlightData &fd) {
-  const int by = 150, bh = 10;
+  const int by = 144, bh = 16;
   tft.fillRect(0, by, 128, bh, ST7735_BLACK);
   draw_plane_icon(5, by + 4, ST7735_CYAN);
 
@@ -344,7 +421,7 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
   ui_draw_weather(w);
   ui_draw_flightinfo(flight_data());
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
-  ui_screen_tag(1, 7);
+  ui_screen_tag(1, 8);
 }
 
 // ---------- Screen 2: 3-day forecast ----------
@@ -391,10 +468,10 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
     if (i < 2) tft.drawFastHLine(0, y + rowH - 2, 128, 0x2104);
     y += rowH;
   }
-  ui_screen_tag(3, 7);
+  ui_screen_tag(4, 8);
 }
 
-// ---------- Screen: ESPHome sensors (2nd) ----------
+// ---------- Screen: ESPHome sensors ----------
 void ui_screen_esphome() {
   tft.fillScreen(ST7735_BLACK);
   tft.setTextColor(ST7735_CYAN);
@@ -439,10 +516,10 @@ void ui_screen_esphome() {
     }
     y += 32;
   }
-  ui_screen_tag(2, 7);
+  ui_screen_tag(3, 8);
 }
 
-// ---------- Screen 4: Weather detail ----------
+// ---------- Screen: Weather detail ----------
 // Draw a small moon phase glyph at (cx,cy) radius r. phase 0/1=new, 0.5=full.
 // The lit fraction grows from the right (waxing) to full, then shrinks from the
 // right (waning), mimicking the northern-hemisphere appearance.
@@ -537,10 +614,10 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setCursor(8, 44);
     tft.print("no data");
   }
-  ui_screen_tag(4, 7);
+  ui_screen_tag(5, 8);
 }
 
-// ---------- Screen 5: Website monitors ----------
+// ---------- Screen: Website monitors ----------
 void ui_screen_monitors() {
   tft.fillScreen(ST7735_BLACK);
   tft.setTextColor(ST7735_CYAN);
@@ -571,7 +648,7 @@ void ui_screen_monitors() {
     tft.print(buf);
     y += 30;
   }
-  ui_screen_tag(5, 7);
+  ui_screen_tag(6, 8);
 }
 
 // Color code for a flight class tag.
@@ -602,7 +679,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.setTextColor(ST7735_WHITE);
     tft.setCursor(10, 70);
     tft.print("Disabled (set range)");
-    ui_screen_tag(6, 7);
+    ui_screen_tag(7, 8);
     return;
   }
 
@@ -662,7 +739,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
   }
 
   ui_draw_flight_countdown();
-  ui_screen_tag(6, 7);
+  ui_screen_tag(7, 8);
 }
 
 // Next-refresh countdown in the bottom-right corner of the radar.
@@ -719,7 +796,7 @@ void ui_screen_system(int rssi, String intIp, unsigned long uptime) {
   tft.setCursor(44, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
 
   ui_system_update(rssi, uptime);
-  ui_screen_tag(7, 7);
+  ui_screen_tag(8, 8);
 }
 
 void ui_system_update(int rssi, unsigned long uptime) {
@@ -751,17 +828,175 @@ void ui_system_update(int rssi, unsigned long uptime) {
   tft.print(buf);
 }
 
+// ---------- Screen: Incidents (2nd) ----------
+// Print `text` (sanitized to 7-bit ASCII) wrapped at `maxChars` per line,
+// advancing `y` past each rendered line.
+static void ui_print_wrap(const char *text, int x, int &y, int maxChars, uint16_t color) {
+  char tmp[48];
+  strncpy(tmp, text, sizeof(tmp) - 1);
+  tmp[sizeof(tmp) - 1] = 0;
+  sanitize_ascii(tmp);
+  int len = (int)strlen(tmp);
+  tft.setTextColor(color);
+  tft.setTextSize(1);
+  for (int i = 0; i < len; i += maxChars) {
+    tft.setCursor(x, y);
+    int n = min(maxChars, len - i);
+    char line[20];
+    memcpy(line, tmp + i, n);
+    line[n] = 0;
+    tft.print(line);
+    y += 10;
+  }
+}
+
+// The most recent incidents, cropped to the geofence radius (only incidents
+// within INCIDENT_RADIUS_M) and listed nearest-first. Shows up to 4 rows; each
+// row has natureza (code stripped), the concelho wrapped to the screen width,
+// then distance + estado.
+void ui_screen_incidents() {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(2, 2);
+  tft.print("Incidents");
+  tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
+
+  const IncidentData &id = incidents_data();
+  float radiusKm = INCIDENT_RADIUS_M / 1000.0f;
+  int y = 22;
+  char buf[40];
+
+  if (!id.valid) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, y);
+    tft.print("loading...");
+  } else {
+    int shown = 0;
+    for (int i = 0; i < id.count && shown < 4 && y <= 130; i++) {
+      const Incident &in = id.inc[i];
+      if (in.dst > radiusKm) continue;                 // crop to the geofence
+
+      // natureza: strip the leading "NNNN - " code so the readable part fits.
+      char raw[24];
+      strncpy(raw, in.natureza, sizeof(raw) - 1);
+      raw[sizeof(raw) - 1] = 0;
+      char *sep = strstr(raw, " - ");
+      char nt[22];
+      strncpy(nt, sep ? sep + 3 : raw, sizeof(nt) - 1);
+      nt[sizeof(nt) - 1] = 0;
+      sanitize_ascii(nt);
+
+      char st[14];
+      strncpy(st, in.estado, sizeof(st) - 1);
+      st[sizeof(st) - 1] = 0;
+      sanitize_ascii(st);
+      if (strlen(st) > 13) st[13] = 0;
+
+      // Line 1: natureza.
+      tft.setTextColor(ST7735_YELLOW);
+      tft.setCursor(2, y);
+      tft.print(nt[0] ? nt : "---");
+
+      // Line 2: concelho, wrapped (advances y past each rendered line).
+      int ly = y + 10;
+      char loc[48];
+      strncpy(loc, in.concelho, sizeof(loc) - 1);
+      loc[sizeof(loc) - 1] = 0;
+      sanitize_ascii(loc);
+      abbrev_place(loc);
+      if (loc[0]) {
+        ui_print_wrap(loc, 2, ly, 20, ST7735_WHITE);
+      } else {
+        tft.setTextColor(ST7735_WHITE);
+        tft.setCursor(2, ly);
+        tft.print("---");
+        ly += 10;
+      }
+
+      // Last line: distance + estado.
+      snprintf(buf, sizeof(buf), "%.1fkm %s", in.dst, st);
+      tft.setTextColor(ST7735_GREEN);
+      tft.setCursor(2, ly);
+      tft.print(buf);
+
+      shown++;
+      y = ly + 10 + 2;
+    }
+    if (shown == 0) {
+      tft.setTextColor(ST7735_WHITE);
+      tft.setCursor(2, y);
+      snprintf(buf, sizeof(buf), "none within %.0fkm", radiusKm);
+      tft.print(buf);
+    }
+  }
+
+  // Last-refresh footer: timestamp + result (OK/FAIL) of the last fetch.
+  char ts[24];
+  if (id.lastUpdated > 0) {
+    const struct tm *t = localtime(&id.lastUpdated);
+    snprintf(ts, sizeof(ts), "upd %02d:%02d %s", t->tm_hour, t->tm_min,
+             id.lastOk ? "OK" : "FAIL");
+  } else {
+    snprintf(ts, sizeof(ts), "upd --:--");
+  }
+  tft.setTextColor(id.lastOk ? ST7735_GREEN : ST7735_RED);
+  tft.setCursor(2, 150);
+  tft.print(ts);
+
+  ui_screen_tag(2, 8);
+}
+
+// Geofence alert overlay: incident details in a bordered box until dismissed.
+void ui_popup_show(const Incident &inc) {
+  tft.fillScreen(ST7735_BLACK);
+  const int bx = 2, by = 18, bw = 124, bh = 130;
+  tft.fillRoundRect(bx, by, bw, bh, 3, tft.color565(18, 18, 18));
+  tft.drawRoundRect(bx, by, bw, bh, 3, ST7735_RED);
+
+  int y = by + 6;
+  tft.setTextSize(1);
+  tft.setTextColor(ST7735_RED);
+  tft.setCursor(bx + 6, y);
+  tft.print("ALERTA");
+  y += 12;
+  tft.drawFastHLine(bx + 4, y, bw - 8, ST7735_RED);
+  y += 4;
+
+  ui_print_wrap(inc.natureza, bx + 6, y, 18, ST7735_WHITE);
+  y += 2;
+  ui_print_wrap(inc.estado, bx + 6, y, 18, ST7735_YELLOW);
+  ui_print_wrap(inc.concelho, bx + 6, y, 18, ST7735_CYAN);
+  ui_print_wrap(inc.dataHora, bx + 6, y, 18, 0xAD55);
+
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%.1f km", inc.dst);
+  ui_print_wrap(buf, bx + 6, y, 18, ST7735_GREEN);
+  y += 2;
+  tft.setTextColor(0xAD55);
+  tft.setCursor(bx + 6, y);
+  tft.print("Btn: dismiss");
+}
+
+// Blank the whole panel, clearing any popup residue (red borders etc.) left at
+// screen edges not covered by the underlying screen's block redraw.
+void ui_clear() {
+  tft.fillScreen(ST7735_BLACK);
+}
+
 // ---------- Legacy combined (unused by loop, kept for reference) ----------
 void ui_draw_weather(const Weather &w) {
   char buf[20];
-  tft.fillRect(0, 52, 128, 56, ST7735_BLACK);
-  tft.drawFastHLine(0, 52, 128, ST7735_BLUE);
+  tft.fillRect(0, 44, 128, 44, ST7735_BLACK);
+  tft.drawFastHLine(0, 44, 128, ST7735_BLUE);
 
+  // Temperature and humidity share the top line, each with an icon.
+  draw_temp_icon(5, 56, ST7735_RED);
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.setCursor(2, 58);
+  tft.setCursor(14, 48);
   if (w.valid) {
-    ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 14, 0, 2);
   } else {
     tft.print("--.-");
     int cx = tft.getCursorX(), cy = tft.getCursorY();
@@ -770,41 +1005,75 @@ void ui_draw_weather(const Weather &w) {
     tft.print("C");
   }
 
+  draw_drop_icon(88, 56, ST7735_CYAN);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(96, 56);
+  if (w.valid) {
+    snprintf(buf, sizeof(buf), "%d%%", w.humidity);
+    tft.print(buf);
+  } else {
+    tft.print("--");
+  }
+
   tft.setTextSize(1);
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(4, 80);
+  tft.setCursor(4, 72);
   if (w.valid) {
     char dbuf[32];
     strncpy(dbuf, w.desc, sizeof(dbuf) - 1);
     dbuf[sizeof(dbuf) - 1] = 0;
     tft.print(dbuf);
-    tft.setCursor(4, 92);
-    snprintf(buf, sizeof(buf), "Hum %d%%", w.humidity);
-    tft.print(buf);
   } else {
     tft.print("weather...");
   }
 }
 
 void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillRect(0, 100, 128, 46, ST7735_BLACK);
-  if (!metrics) return;
+  tft.fillRect(0, 88, 128, 56, ST7735_BLACK);   // 88..144, overlaps the flight box top
+  tft.drawFastHLine(0, 88, 128, ST7735_BLUE);
 
-  tft.drawFastHLine(0, 102, 128, ST7735_BLUE);
+  if (metrics) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, 94);
+    tft.print("LAN ");
+    tft.print(intIp);
+    tft.setCursor(2, 103);
+    tft.print("WAN ");
+    tft.print(extIp.length() ? extIp : "-");
+    tft.setCursor(2, 112);
+    unsigned long up = uptime / 1000;
+    char buf[24];
+    snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
+             up / 3600, (up % 3600) / 60, up % 60);
+    tft.print(buf);
+  }
+
+  // Separator above the alert line.
+  tft.drawFastHLine(2, 121, 124, ST7735_BLUE);
+
+  // Active geofence alerts count — always visible on the main screen.
+  int alerts = incidents_active_count();
+  uint16_t acol = alerts > 0 ? ST7735_RED : ST7735_GREEN;
+  draw_alert_icon(7, 131, acol);
   tft.setTextSize(1);
-  char buf[24];
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 108);
-  tft.print("LAN ");
-  tft.print(intIp);
-  tft.setCursor(2, 118);
-  tft.print("WAN ");
-  tft.print(extIp.length() ? extIp : "-");
-  tft.setCursor(2, 138);
-  unsigned long up = uptime / 1000;
-  snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
-           up / 3600, (up % 3600) / 60, up % 60);
-  tft.print(buf);
+  tft.setTextColor(acol);
+  tft.setCursor(14, 127);
+  tft.print("alert ");
+  tft.print(alerts);
+  tft.print(" (upd ");
+  time_t up = incidents_data().lastUpdated;
+  if (up > 0) {
+    const struct tm *t = localtime(&up);
+    tft.print(t->tm_hour < 10 ? "0" : "");
+    tft.print(t->tm_hour);
+    tft.print(":");
+    tft.print(t->tm_min < 10 ? "0" : "");
+    tft.print(t->tm_min);
+  } else {
+    tft.print("--:--");
+  }
+  tft.print(")");
 }
 
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,

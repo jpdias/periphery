@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "netfsm.h"
 #include "config.h"
+#include "env.h"
 #include "httpfsm.h"
 #include <ESP8266WiFi.h>
 
@@ -64,21 +65,21 @@ static void start_task(NetTask t) {
   String host, url;
   switch (t) {
     case TASK_WEATHER:
-      host = "api.open-meteo.com";
+      host = WEATHER_HOST;
       url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
             "&longitude=" + String(cfg.lon, 4) +
             "&current=temperature_2m,relative_humidity_2m,weather_code" +
             "&daily=sunrise,sunset&forecast_days=1&timezone=auto";
       break;
     case TASK_FORECAST:
-      host = "api.open-meteo.com";
+      host = WEATHER_HOST;
       url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
             "&longitude=" + String(cfg.lon, 4) +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
             "&forecast_days=4&timezone=auto";
       break;
     case TASK_EXTIP:
-      host = "ipinfo.io";
+      host = EXTIP_HOST;
       url = "/json";
       break;
   }

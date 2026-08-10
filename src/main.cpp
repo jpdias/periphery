@@ -8,6 +8,7 @@
 #include "ui.h"
 #include "netmon.h"
 #include "flight.h"
+#include "incidents.h"
 #include "moon.h"
 #include "control.h"
 
@@ -19,12 +20,32 @@
                               // firmware drives it HIGH, then fully controllable.
 
 #define BTN_LONG_MS 600       // press >= this = long press (display on/off)
+#define POPUP_MS 600000UL     // geofence popup auto-dismiss after 10 min
 
 volatile bool btnToggle = false;
 bool screenOn = true;
 bool drawnStatic = false;
 int screenIndex = 0;          // 0..N -> screens 1..N+1
-const int SCREEN_COUNT = 7;   // 5 = flight radar, 6 = system info
+const int SCREEN_COUNT = 8;   // 1 = incidents, 6 = flight radar, 7 = system info
+
+// Geofence popup state: opens when an incident enters the radius, stays up for
+// POPUP_MS or until a short button press dismisses it. Dismissals are in-RAM
+// (this boot only) so the alert won't re-pop during the session but can again
+// after a reboot.
+bool popupActive = false;
+static unsigned long popupUntil = 0;
+static uint32_t popupIncFp = 0;
+
+// Close the popup and dismiss the incident by its stable fingerprint (button
+// or timeout).
+static void popup_dismiss() {
+  if (!popupActive) return;
+  if (popupIncFp) incidents_dismiss(popupIncFp);
+  popupActive = false;
+  popupUntil = 0;
+  ui_clear();      // wipe popup residue (red borders) before the redraw
+  drawnStatic = false;   // force a full redraw of the underlying screen
+}
 
 // Display state: displayOn is the single source of truth for the physical
 // on/off of the whole display (screen contents + backlight). A long press
@@ -52,6 +73,7 @@ static void display_set(bool on) {
     // then re-init the (cold-booted) controller and force a full redraw.
     backlight_write(true);
     ui_poweron();
+    popupActive = false;   // a stale popup must not blank a freshly woken screen
     drawnStatic = false;
     mlog.println("[DISP] ON");
   } else {
@@ -64,13 +86,13 @@ static void display_set(bool on) {
 // ---- Control API (shared by button, scheduler, and web/REST) ----------------
 
 static const char* SCREEN_NAMES[SCREEN_COUNT] = {
-  "Clock", "ESPHome", "Forecast", "Weather Detail", "Monitors", "Flight Radar", "System"
+  "Clock", "Incidents", "ESPHome", "Forecast", "Weather Detail", "Monitors", "Flight Radar", "System"
 };
 
 bool control_screen_enabled(int idx) {
   if (idx < 0 || idx >= SCREEN_COUNT) return false;
   if (!cfg.screen_enabled[idx]) return false;
-  if (idx == 5 && cfg.flight_range <= 0) return false;  // flight radar off when range 0
+  if (idx == 6 && cfg.flight_range <= 0) return false;  // flight radar off when range 0
   return true;
 }
 
@@ -158,12 +180,13 @@ void setup() {
    esphome_begin();
    monitors_begin();
    flight_begin();
+   incidents_begin();
    moon_begin();
 
    // Land on the first enabled screen (fall back to Clock if none enabled).
    screenIndex = 0;
    for (int i = 0; i < SCREEN_COUNT; i++) {
-     bool disabled = !cfg.screen_enabled[i] || (i == 5 && cfg.flight_range <= 0);
+     bool disabled = !cfg.screen_enabled[i] || (i == 6 && cfg.flight_range <= 0);
      if (!disabled) { screenIndex = i; break; }
    }
 
@@ -210,7 +233,14 @@ void setup() {
      ui_boot_step(4, "Flight radar", flOk ? BOOT_DONE : BOOT_FAIL);
    }
 
-   ui_boot_step(5, "Ready", BOOT_DONE);
+   // 4) Incidents first fetch (TLS) — flight has released the lock by now.
+   if (cfg.screen_enabled[1]) {
+     ui_boot_step(5, "Incidents", BOOT_WAIT);
+     bool incOk = incidents_fetch_blocking(12000);
+     ui_boot_step(5, "Incidents", incOk ? BOOT_DONE : BOOT_FAIL);
+   }
+
+   ui_boot_step(6, "Ready", BOOT_DONE);
    mlog.println("[BOOT] sequence complete");
    delay(600);
 }
@@ -225,21 +255,24 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
                      WiFi.RSSI(), WiFi.localIP().toString(), extIp, millis());
       break;
     case 1:
-      ui_screen_esphome();
+      ui_screen_incidents();
       break;
     case 2:
-      ui_screen_forecast(h, m, s, forecast);
+      ui_screen_esphome();
       break;
     case 3:
-      ui_screen_detail(h, m, s, weather);
+      ui_screen_forecast(h, m, s, forecast);
       break;
     case 4:
-      ui_screen_monitors();
+      ui_screen_detail(h, m, s, weather);
       break;
     case 5:
-      ui_screen_flight(flight_data(), cfg.flight_range);
+      ui_screen_monitors();
       break;
     case 6:
+      ui_screen_flight(flight_data(), cfg.flight_range);
+      break;
+    case 7:
       ui_screen_system(WiFi.RSSI(), WiFi.localIP().toString(), millis());
       break;
   }
@@ -278,6 +311,7 @@ void loop() {
   esphome_tick();
   monitors_tick();
   flight_tick();
+  incidents_tick();
   moon_tick();     // fetches sun/moon data once per local day (heap-guarded)
 
   // --- Button: short press cycles screens, long press toggles the display ---
@@ -301,9 +335,37 @@ void loop() {
       mlog.printf("[BTN] long press -> display %s\n", now ? "ON" : "OFF");
     }
     if (!down) {
-      // Released: if it never became a long press, treat as a screen cycle.
-      if (!btnLongDone) control_screen_next();
+      // Released: if it never became a long press, dismiss an active geofence
+      // popup (first press), otherwise treat it as a screen cycle.
+      if (!btnLongDone) {
+        if (popupActive) {
+          mlog.println("[POP] button dismissed");
+          popup_dismiss();
+        } else {
+          control_screen_next();
+        }
+      }
       btnHeld = false;
+    }
+  }
+
+  // --- Geofence popup: open on a new in-radius incident, dismiss after 10 min ---
+  if (popupActive) {
+    if (millis() >= popupUntil) {
+      mlog.println("[POP] timed out (10 min), dismissed");
+      popup_dismiss();
+    }
+  } else if (screenOn) {
+    int hit = incidents_geofence_hit();
+    if (hit >= 0) {
+      const Incident &inc = incidents_data().inc[hit];
+      if (!incidents_is_dismissed(inc.fp)) {
+        popupActive = true;
+        popupIncFp = inc.fp;
+        popupUntil = millis() + POPUP_MS;
+        mlog.printf("[POP] alert: %u fp=%08X %.1fkm\n", inc.id, inc.fp, inc.dst);
+        ui_popup_show(inc);
+      }
     }
   }
 
@@ -347,9 +409,10 @@ void loop() {
   bool dataUpdated = netfsm_updated();
   bool ehUpdated = esphome_updated();   // consume flag every loop
   bool flUpdated = flight_updated();    // consume flag every loop
+  bool incUpdated = incidents_updated();  // consume flag every loop
   bool mnUpdated = moon_updated();      // consume flag every loop
 
-  if (screenOn && ui_is_on()) {
+  if (screenOn && ui_is_on() && !popupActive) {
     static int lastMin = -1;
     static unsigned long lastSec = 0;
 
@@ -357,9 +420,10 @@ void loop() {
     bool needRedraw = !drawnStatic;
     if (screenIndex == 0 && m != lastMin) needRedraw = true;
     if (dataUpdated) needRedraw = true;
-    if (ehUpdated && screenIndex == 1) needRedraw = true;   // ESPHome screen live update
-    if (flUpdated && screenIndex == 5) needRedraw = true;   // flight radar live update
-    if (mnUpdated && screenIndex == 3) needRedraw = true;   // moon data arrived
+    if (incUpdated && screenIndex == 1) needRedraw = true;   // incidents live update
+    if (ehUpdated && screenIndex == 2) needRedraw = true;   // ESPHome screen live update
+    if (flUpdated && screenIndex == 6) needRedraw = true;   // flight radar live update
+    if (mnUpdated && screenIndex == 4) needRedraw = true;   // moon data arrived
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);
@@ -375,13 +439,13 @@ void loop() {
       }
       // Refresh only the flight box when new flight data arrives (no full redraw).
       if (flUpdated) ui_draw_flightinfo(flight_data());
-    } else if (screenIndex == 5) {
+    } else if (screenIndex == 6) {
       // Flight radar: tick the next-refresh countdown once per second.
       if (millis() - lastSec >= 1000) {
         lastSec = millis();
         ui_draw_flight_countdown();
       }
-    } else if (screenIndex == 6) {
+    } else if (screenIndex == 7) {
       // System screen: refresh dynamic values once per second (isolated boxes).
       if (millis() - lastSec >= 1000) {
         lastSec = millis();

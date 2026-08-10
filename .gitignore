@@ -3,6 +3,9 @@
 .venv-tools
 .vscode
 
+# Real settings (never commit the real one, only env.example.h)
+src/env.h
+
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch

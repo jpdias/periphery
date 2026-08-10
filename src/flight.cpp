@@ -1,12 +1,13 @@
 #include "logbuf.h"
 #include "flight.h"
 #include "config.h"
+#include "env.h"
 #include "tlslock.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
-static const char* FL_HOST = "opendata.adsb.fi";
+static const char* FL_HOST = FLIGHT_HOST;
 static const uint16_t FL_PORT = 443;
 static const unsigned long FL_INTERVAL = 15000;  // 15s refresh (TLS is heap-heavy)
 static const uint32_t FL_MIN_HEAP = 22000;       // skip fetch if heap too low for TLS+JSON

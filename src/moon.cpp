@@ -1,6 +1,7 @@
 #include "moon.h"
 #include "logbuf.h"
 #include "config.h"
+#include "env.h"
 #include "nettime.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
@@ -13,7 +14,6 @@
 // returns sun + moon in one fast call (ISO 8601 local times). It is much faster
 // than the old USNO TLS endpoint and needs no BearSSL session, so it does not
 // contend with the flight radar's TLS client.
-static const char*  MOON_HOST = "api.sunrise-sunset.org";
 static const uint16_t MOON_PORT = 80;
 
 static MoonInfo gMoon;

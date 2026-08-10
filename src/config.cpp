@@ -1,5 +1,6 @@
 #include "logbuf.h"
 #include "config.h"
+#include "env.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
@@ -22,6 +23,8 @@ struct LegacyConfig {
 
 static void apply_defaults() {
   cfg = Config{};
+  strncpy(cfg.wifi_ssid, WIFI_SSID, sizeof(cfg.wifi_ssid) - 1);
+  strncpy(cfg.wifi_pass, WIFI_PASS, sizeof(cfg.wifi_pass) - 1);
   strncpy(cfg.monitors[0], "google.com", MONITOR_LEN - 1);
   strncpy(cfg.monitors[1], "github.com", MONITOR_LEN - 1);
   strncpy(cfg.monitors[2], "open-meteo.com", MONITOR_LEN - 1);
