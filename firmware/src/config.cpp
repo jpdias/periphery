@@ -44,7 +44,7 @@ static bool load_json() {
   cfg.lat = doc["lat"] | 0.0f;
   cfg.lon = doc["lon"] | 0.0f;
   strncpy(cfg.tz, doc["tz"] | "Europe/Lisbon", sizeof(cfg.tz) - 1);
-  strncpy(cfg.hostname, doc["hostname"] | "minidash", sizeof(cfg.hostname) - 1);
+  strncpy(cfg.hostname, doc["hostname"] | "periphery", sizeof(cfg.hostname) - 1);
   cfg.weather_interval = doc["weather_interval"] | 600;
   cfg.show_metrics = doc["show_metrics"] | true;
   strncpy(cfg.esphome_host, doc["esphome_host"] | "", sizeof(cfg.esphome_host) - 1);
@@ -253,7 +253,7 @@ bool config_apply_json(const String &body, String &err) {
   if (doc["hostname"].isNull() == false) {
     // Reuse the DNS-label sanitizer via portal is awkward here; do a minimal safe
     // copy and let portal's sanitize_hostname handle the canonical form later.
-    copy_capped(next.hostname, sizeof(next.hostname), doc["hostname"], "minidash");
+    copy_capped(next.hostname, sizeof(next.hostname), doc["hostname"], "periphery");
   }
   if (doc["esphome_host"].isNull() == false)   copy_capped(next.esphome_host, sizeof(next.esphome_host), doc["esphome_host"], "");
   if (doc["esphome_sensors"].isNull() == false) copy_capped(next.esphome_sensors, sizeof(next.esphome_sensors), doc["esphome_sensors"], "");

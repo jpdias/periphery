@@ -316,7 +316,7 @@ void trains_tick() {
                          "Host: " + host + "\r\n" +
                          "User-Agent: " + TRAIN_UA + "\r\n" +
                          "Accept: application/json\r\n";
-            if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+            if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
             req += "Connection: close\r\n\r\n";
             cli->print(req);
             step = S_HDR;
@@ -379,7 +379,7 @@ bool trains_fetch_blocking(unsigned long timeoutMs) {
                    "Host: " + host + "\r\n" +
                    "User-Agent: " + TRAIN_UA + "\r\n" +
                    "Accept: application/json\r\n";
-      if (proxy_enabled()) req += "X-Minidash-Raw: 1\r\n";
+      if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
       req += "Connection: close\r\n\r\n";
       c->print(req);
       uint8_t m = 0;

@@ -1,4 +1,4 @@
-const CACHE = "minidash-v29";
+const CACHE = "periphery-v31";
 const ASSETS = ["./", "./index.html", "./style.css", "./config.js", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", (e) => {

@@ -1,7 +1,7 @@
 // Lightweight local dev server: serves public/ statically and runs the Netlify
 // functions in-process under /api/<widget>. Same response contract as production
 // (wrapped {ok,data} for browsers, raw passthrough for the firmware's
-// X-Minidash-Raw header). Loads env vars from .env if present.
+// X-Periphery-Raw header). Loads env vars from .env if present.
 //
 //   node dev-server.mjs          # default http://localhost:8080
 //   PORT=3000 node dev-server.mjs
@@ -151,7 +151,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`miniDash dev server: http://localhost:${PORT}`);
+  console.log(`periphery dev server: http://localhost:${PORT}`);
   console.log(`  static  -> ${PUB}`);
   console.log(`  api     -> ${FUNCS} (loaded on each request)`);
 });

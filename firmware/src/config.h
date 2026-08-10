@@ -19,7 +19,7 @@ struct Config {
   float lat = 0.0f;
   float lon = 0.0f;
   char tz[32] = "Europe/Lisbon";
-  char hostname[24] = "minidash";   // mDNS / DHCP name (http://<hostname>.local)
+  char hostname[24] = "periphery";   // mDNS / DHCP name (http://<hostname>.local)
   int   weather_interval = 600;  // seconds
   bool  show_metrics = true;
   char  monitors[MONITOR_MAX][MONITOR_LEN] = {0};
@@ -32,7 +32,7 @@ struct Config {
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
   char  ip_station[16] = {0};     // IP station node ID for the Trains screen (e.g. "9402006")
   char  ip_station_name[40] = {0}; // Station display name (prefill for the web search UI)
-  char  api_base[128] = {0};      // Netlify site base URL, e.g. "https://minidash.netlify.app"
+  char  api_base[128] = {0};      // Netlify site base URL, e.g. "https://periphery.netlify.app"
   bool  use_api_proxy = false;    // route widget fetches through the api_base proxy endpoints
   bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true, true };
   bool  backlight_control = true;   // drive backlight via transistor on D8/GPIO15

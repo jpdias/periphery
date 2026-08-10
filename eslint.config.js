@@ -43,7 +43,7 @@ export default [
         localStorage: "readonly",
         document: "readonly",
         fetch: "readonly",
-        MINIDASH_CONFIG: "readonly",
+        PERIPHERY_CONFIG: "readonly",
       },
     },
   },
