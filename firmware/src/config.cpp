@@ -56,7 +56,6 @@ static bool load_json() {
   strncpy(cfg.ip_station, doc["ip_station"] | "", sizeof(cfg.ip_station) - 1);
   strncpy(cfg.ip_station_name, doc["ip_station_name"] | "", sizeof(cfg.ip_station_name) - 1);
   strncpy(cfg.api_base, doc["api_base"] | "", sizeof(cfg.api_base) - 1);
-  cfg.use_api_proxy = doc["use_api_proxy"] | false;
   cfg.backlight_control = doc["backlight_control"] | true;
   cfg.backlight_active_high = doc["backlight_active_high"] | true;
   JsonArray scr = doc["screens"];
@@ -142,7 +141,6 @@ void config_save() {
   doc["ip_station"] = cfg.ip_station;
   doc["ip_station_name"] = cfg.ip_station_name;
   doc["api_base"] = cfg.api_base;
-  doc["use_api_proxy"] = cfg.use_api_proxy;
   doc["backlight_control"] = cfg.backlight_control;
   doc["backlight_active_high"] = cfg.backlight_active_high;
   JsonArray scr = doc["screens"].to<JsonArray>();
@@ -184,7 +182,6 @@ String config_to_json() {
   doc["ip_station"] = cfg.ip_station;
   doc["ip_station_name"] = cfg.ip_station_name;
   doc["api_base"] = cfg.api_base;
-  doc["use_api_proxy"] = cfg.use_api_proxy;
   doc["backlight_control"] = cfg.backlight_control;
   doc["backlight_active_high"] = cfg.backlight_active_high;
   JsonArray scr = doc["screens"].to<JsonArray>();
@@ -274,7 +271,6 @@ bool config_apply_json(const String &body, String &err) {
 
   // Bools.
   if (doc["show_metrics"].isNull() == false)         next.show_metrics         = (jint(doc["show_metrics"], cfg.show_metrics ? 1 : 0) != 0);
-  if (doc["use_api_proxy"].isNull() == false)        next.use_api_proxy        = (jint(doc["use_api_proxy"], cfg.use_api_proxy ? 1 : 0) != 0);
   if (doc["backlight_control"].isNull() == false)    next.backlight_control    = doc["backlight_control"] | cfg.backlight_control;
   if (doc["backlight_active_high"].isNull() == false) next.backlight_active_high = doc["backlight_active_high"] | cfg.backlight_active_high;
 

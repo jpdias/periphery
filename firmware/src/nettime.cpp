@@ -111,28 +111,6 @@ long time_tz_offset() {
   time_t asLocal = mktime(&g);
   return (long)difftime(now, asLocal);
 }
-
-// ---- shared HTTP GET (blocking) used by the simple wrappers ----
-static bool http_get(const char* host, const char* url, String &body) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  WiFiClient client;
-  if (!client.connect(host, 80)) return false;
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "User-Agent: periphery\r\n" +
-               "Connection: close\r\n\r\n");
-  unsigned long t0 = millis();
-  while (!client.available() && millis() - t0 < 5000) yield();
-  bool headersDone = false;
-  while (client.available()) {
-    String line = client.readStringUntil('\n');
-    if (!headersDone && line.length() <= 1) headersDone = true;
-    else if (headersDone) body += line;
-  }
-  client.stop();
-  return body.length() > 0;
-}
-
 // Strip HTTP headers and return only the JSON body starting at '{'.
 static String json_only(const String &body) {
   int i = body.indexOf('{');
@@ -200,44 +178,6 @@ bool parse_extip_body(const String &body, String &ip) {
   ip = p;
   mlog.printf("[IP] external=%s\n", ip.c_str());
   return true;
-}
-
-bool weather_fetch(float lat, float lon, Weather &w) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  String host = WEATHER_HOST;
-  String url = "/v1/forecast?latitude=" + String(lat, 4) +
-               "&longitude=" + String(lon, 4) +
-               "&current=temperature_2m,relative_humidity_2m,weather_code" +
-               "&daily=sunrise,sunset&forecast_days=1&timezone=auto";
-  mlog.printf("[WX] request: http://%s%s\n", host.c_str(), url.c_str());
-  mlog.printf("[WX] lat=%.4f lon=%.4f\n", lat, lon);
-  String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[WX] request failed"); return false; }
-  mlog.printf("[WX] body len=%d\n", body.length());
-  return parse_weather_body(body, w);
-}
-
-bool forecast_fetch(float lat, float lon, Forecast &f) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  String host = WEATHER_HOST;
-  String url = "/v1/forecast?latitude=" + String(lat, 4) +
-               "&longitude=" + String(lon, 4) +
-               "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
-               "&forecast_days=4&timezone=auto";
-  mlog.printf("[FC] request: http://%s%s\n", host.c_str(), url.c_str());
-  String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[FC] request failed"); return false; }
-  return parse_forecast_body(body, f);
-}
-
-String external_ip_fetch() {
-  String host = EXTIP_HOST;
-  String url = "/json";
-  String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[IP] request failed"); return String(); }
-  String ip;
-  if (!parse_extip_body(body, ip)) return String();
-  return ip;
 }
 
 const char* weather_icon(int code) {

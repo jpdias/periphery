@@ -1,35 +1,35 @@
 #include "moon.h"
 #include "logbuf.h"
 #include "config.h"
-#include "env.h"
 #include "nettime.h"
+#include "netproxy.h"
+#include "tlslock.h"
+#include "httpfsm.h"
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <math.h>
 #include <time.h>
 
-// Sun + Moon data from sunrise-sunset.org v2 — plain HTTP (no TLS, no API key).
-// This endpoint explicitly supports non-TLS requests for ESP8266/Arduino and
-// returns sun + moon in one fast call (ISO 8601 local times). It is much faster
-// than the old USNO TLS endpoint and needs no BearSSL session, so it does not
-// contend with the flight radar's TLS client.
-static const uint16_t MOON_PORT = 80;
+// Sun + Moon data via the Netlify proxy (moon.js wraps the NASA JPL Horizons
+// RTS table). TLS only; the FSM and blocking path share the tlslock with the
+// other widget fetchers so only one BearSSL session is ever active.
 
 static MoonInfo gMoon;
 static bool gUpdated = false;
 static int  gFetchedYday = -1;    // local day-of-year we last fetched for
 static int  gFetchYr = 0, gFetchMon = 0, gFetchDay = 0;  // date requested by FSM
 
-enum MPhase { M_IDLE, M_CONN, M_WAIT, M_READ };
+enum MPhase { M_IDLE, M_WAIT };
 static MPhase phase = M_IDLE;
-static WiFiClient *cli = nullptr;
-static unsigned long timer = 0;
+static HttpFsm http;
 static unsigned long lastAttempt = 0;
+static unsigned long timer = 0;
 
 void moon_begin() {
   gMoon.valid = false;
   gFetchedYday = -1;
+  http.consume();
 }
 
 const MoonInfo& moon_data() { return gMoon; }
@@ -39,18 +39,15 @@ bool moon_updated() {
   return false;
 }
 
-static void cleanup() {
-  if (cli) { cli->stop(); delete cli; cli = nullptr; }
-}
-
 static void fail(const char* why) {
   mlog.printf("[MOON] fail: %s\n", why);
-  cleanup();
+  http.consume();
+  tls_release();
   phase = M_IDLE;
   lastAttempt = millis();
 }
 
-// Slice "HH:MM" from an ISO 8601 local time ("2026-07-18T06:15:03+01:00").
+// Slice "HH:MM" from an ISO 8601 time ("2026-07-18T06:15:03Z").
 // Null/missing input (ArduinoJson yields "") yields an empty string.
 static void to_iso_hhmm(const char* src, char* dst) {
   dst[0] = 0;
@@ -58,18 +55,7 @@ static void to_iso_hhmm(const char* src, char* dst) {
   snprintf(dst, 6, "%.2s:%.2s", src + 11, src + 14);
 }
 
-// Build the request URL for the local date. The v2 endpoint returns times in the
-// location's own local timezone, so no tz parameter is needed.
-static String build_url(int yr, int mon, int day) {
-  char date[12];
-  snprintf(date, sizeof(date), "%04d-%02d-%02d", yr, mon, day);
-  return String("/v2?lat=") + String(cfg.lat, 4) +
-         "&lng=" + String(cfg.lon, 4) +
-         "&date=" + date;
-}
-
-// Map a v2 moon_phase name to a rough 0..1 fraction for the glyph (no numeric
-// phase is provided by this API, unlike the .io one).
+// Map a moon_phase_name to a rough 0..1 fraction for the glyph.
 static float phase_fraction(const char* name, int illum) {
   if (!name) name = "";
   if (strstr(name, "New")) return 0.0f;
@@ -90,7 +76,7 @@ bool parse_moon_body(const String &body, MoonInfo &out) {
   DeserializationError err = deserializeJson(doc, body.c_str() + brace);
   if (err) { mlog.printf("[MOON] parse err: %s\n", err.c_str()); return false; }
 
-  // v2 returns top-level fields. moonrise/moonset are null when they don't occur.
+  // moon.js returns top-level sunrise/sunset/moonrise/moonset (null when absent).
   out.sunrise[0] = out.sunset[0] = out.moonrise[0] = out.moonset[0] = 0;
   to_iso_hhmm(doc["sunrise"] | "", out.sunrise);
   to_iso_hhmm(doc["sunset"]  | "", out.sunset);
@@ -98,7 +84,7 @@ bool parse_moon_body(const String &body, MoonInfo &out) {
   to_iso_hhmm(doc["moonset"]  | "", out.moonset);   // null -> empty
 
   out.illum = (int)roundf(doc["moon_illumination"] | 0.0f);
-  const char* cp = doc["moon_phase"] | "";
+  const char* cp = doc["moon_phase_name"] | "";
   strncpy(out.name, cp, sizeof(out.name) - 1);
   out.name[sizeof(out.name) - 1] = 0;
   out.phase = phase_fraction(cp, out.illum);
@@ -109,33 +95,22 @@ bool parse_moon_body(const String &body, MoonInfo &out) {
   return true;
 }
 
-// Read whatever bytes are currently available into gBody, tracking the header/body
-// split. Returns true when the response is complete (socket closed).
-static String gBody;
-static bool gInBody = false;
-static String gHdrLine;
-
-static bool read_chunk(WiFiClient &c) {
-  int budget = 512;                       // cap per tick to keep the loop snappy
-  while (c.available() && budget-- > 0) {
-    char ch = c.read();
-    if (!gInBody) {
-      gHdrLine += ch;
-      if (ch == '\n') {
-        if (gHdrLine == "\r\n" || gHdrLine == "\n") gInBody = true;
-        gHdrLine = "";
-      }
-    } else {
-      gBody += ch;
-      if (gBody.length() > 4000) return true;   // safety cap -> treat as done
-    }
-  }
-  return (!c.connected() && !c.available());
+// Build the proxy request URL for the local date.
+static String build_url(int yr, int mon, int day) {
+  char date[16];
+  // Modulo keeps the fields bounded so %04d/%02d can't overflow the buffer
+  // (kills -Wformat-truncation).
+  snprintf(date, sizeof(date), "%04d-%02d-%02d", yr % 10000, mon % 100, day % 100);
+  String q = "lat=" + String(cfg.lat, 4) +
+             "&lon=" + String(cfg.lon, 4) +
+             "&date=" + String(date);
+  return proxy_path("moon", q);
 }
 
 void moon_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (!time_is_synced()) return;
+  if (!cfg.api_base[0]) return;
 
   switch (phase) {
     case M_IDLE: {
@@ -144,92 +119,86 @@ void moon_tick() {
       const struct tm *lt = localtime(&now);
       int yday = lt->tm_yday;
       if (yday == gFetchedYday) return;                 // already have today
-      if (millis() - lastAttempt < 10000 && lastAttempt) return;  // retry backoff
+      if (lastAttempt && millis() - lastAttempt < 10000) return;  // retry backoff
+      if (!tls_try_acquire()) return;                   // another TLS session busy
       int h, m, s, dow, day, mon, yr;
       time_now(h, m, s, dow, day, mon, yr);
-      cli = new WiFiClient();
-      if (!cli) { fail("alloc"); return; }
-      cli->setTimeout(3000);
-      // Stash the date we're asking for so M_READ can stamp gFetchedYday.
       gFetchYr = yr; gFetchMon = mon; gFetchDay = day;
-      phase = M_CONN;
+      String url = build_url(yr, mon, day);
+      mlog.printf("[MOON] GET %s\n", url.c_str());
+      if (!http.begin(proxy_host(), url, 443, true, "X-Periphery-Raw: 1")) {
+        tls_release();
+        lastAttempt = millis();
+        return;
+      }
+      phase = M_WAIT;
       timer = millis();
       break;
     }
 
-    case M_CONN: {
-      String url = build_url(gFetchYr, gFetchMon, gFetchDay);
-      if (cli->connect(MOON_HOST, MOON_PORT)) {
-        cli->print(String("GET ") + url + " HTTP/1.1\r\n" +
-                   "Host: " + MOON_HOST + "\r\n" +
-                   "User-Agent: periphery\r\n" +
-                   "Connection: close\r\n\r\n");
-        mlog.printf("[MOON] GET %s\n", url.c_str());
-        phase = M_WAIT;
-        timer = millis();
-      } else if (millis() - timer > 8000) {
-        fail("connect");
-      }
-      break;
-    }
-
     case M_WAIT:
-      if (cli->available()) {
-        gBody = ""; gHdrLine = ""; gInBody = false;
-        phase = M_READ; timer = millis();
-      } else if (!cli->connected()) fail("closed early");
-      else if (millis() - timer > 8000) fail("wait timeout");
-      break;
-
-    case M_READ: {
-      bool done = read_chunk(*cli);
-      if (!done && millis() - timer < 8000) break;   // keep reading next ticks
-      cleanup();
-      mlog.printf("[MOON] body len=%d\n", gBody.length());
-      if (parse_moon_body(gBody, gMoon)) {
-        // Mark today fetched using the date we actually requested.
-        struct tm t;
-        memset(&t, 0, sizeof(t));
-        t.tm_year = gFetchYr - 1900; t.tm_mon = gFetchMon - 1; t.tm_mday = gFetchDay;
-        t.tm_isdst = -1;
-        time_t tt = mktime(&t);
-        gFetchedYday = (tt >= 0) ? localtime(&tt)->tm_yday : -1;
-        gUpdated = true;
-      } else {
+      if (millis() - timer > 20000) { fail("phase timeout"); break; }
+      http.tick();
+      if (http.done()) {
+        String raw = http.body();
+        http.consume();
+        tls_release();
+        mlog.printf("[MOON] body len=%d\n", raw.length());
+        if (parse_moon_body(raw, gMoon)) {
+          // Mark today fetched using the date we actually requested.
+          struct tm t;
+          memset(&t, 0, sizeof(t));
+          t.tm_year = gFetchYr - 1900; t.tm_mon = gFetchMon - 1; t.tm_mday = gFetchDay;
+          t.tm_isdst = -1;
+          time_t tt = mktime(&t);
+          gFetchedYday = (tt >= 0) ? localtime(&tt)->tm_yday : -1;
+          gUpdated = true;
+        } else {
+          lastAttempt = millis();
+        }
+        phase = M_IDLE;
+      } else if (http.failed()) {
+        http.consume();
+        tls_release();
         lastAttempt = millis();
+        phase = M_IDLE;
       }
-      gBody = "";
-      phase = M_IDLE;
       break;
-    }
   }
 }
 
 // Synchronous, deterministic fetch used at boot (and any caller that can block).
-// Plain HTTP, so it's fast and never contends with the flight radar's TLS client.
-// On success sets gFetchedYday so moon_tick() won't re-fetch the same local day.
+// TLS to the Netlify proxy; holds the tlslock for the duration. On success sets
+// gFetchedYday so moon_tick() won't re-fetch the same local day.
 bool moon_fetch_blocking(unsigned long timeoutMs) {
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[MOON] block: no wifi"); return false; }
   if (!time_is_synced()) { mlog.println("[MOON] block: clock not synced"); return false; }
+  if (!cfg.api_base[0]) return false;
+  if (!tls_try_acquire()) { mlog.println("[MOON] block: tls busy"); return false; }
 
-  WiFiClient c;
-  c.setTimeout(3000);
   int h, m, s, dow, day, mon, yr;
   time_now(h, m, s, dow, day, mon, yr);
   String url = build_url(yr, mon, day);
 
+  BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
+  if (!c) { tls_release(); mlog.println("[MOON] block: alloc fail"); return false; }
+  c->setInsecure();
+  c->setBufferSizes(4096, 512);
+  c->setTimeout(3000);
+
   bool ok = false;
-  if (c.connect(MOON_HOST, MOON_PORT)) {
-    c.print(String("GET ") + url + " HTTP/1.1\r\n" +
-            "Host: " + MOON_HOST + "\r\n" +
-            "User-Agent: periphery\r\n" +
-            "Connection: close\r\n\r\n");
+  if (c->connect(proxy_host(), 443)) {
+    c->print(String("GET ") + url + " HTTP/1.1\r\n" +
+             "Host: " + proxy_host() + "\r\n" +
+             "User-Agent: periphery\r\n" +
+             "X-Periphery-Raw: 1\r\n" +
+             "Connection: close\r\n\r\n");
     String body; bool inBody = false; String hdr;
     unsigned long t0 = millis();
     while (millis() - t0 < timeoutMs) {
       ESP.wdtFeed();
-      while (c.available()) {
-        char ch = c.read();
+      while (c->available()) {
+        char ch = c->read();
         if (!inBody) {
           hdr += ch;
           if (ch == '\n' && (hdr == "\r\n" || hdr == "\n")) inBody = true;
@@ -238,7 +207,7 @@ bool moon_fetch_blocking(unsigned long timeoutMs) {
           body += ch;
         }
       }
-      if (inBody && !c.connected() && !c.available()) break;
+      if (inBody && !c->connected() && !c->available()) break;
       if (body.length() > 4000) break;
     }
     mlog.printf("[MOON] block body len=%d\n", body.length());
@@ -253,6 +222,7 @@ bool moon_fetch_blocking(unsigned long timeoutMs) {
   } else {
     mlog.println("[MOON] block: connect failed");
   }
-  c.stop();
+  c->stop(); delete c;
+  tls_release();
   return ok;
 }

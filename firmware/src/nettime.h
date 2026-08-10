@@ -38,14 +38,10 @@ const char* tz_to_posix(const char* name);
 int tz_count();
 const char* tz_name_at(int i);
 
-bool weather_fetch(float lat, float lon, Weather &w);
-bool forecast_fetch(float lat, float lon, Forecast &f);
 const char* weather_icon(int code);
 
-// Fetches the public (external) IP via ipify. Returns empty string on failure.
-String external_ip_fetch();
-
-// Shared body parsers (used by blocking wrappers and the non-blocking FSM)
+// Shared body parsers (used by the non-blocking FSM). These parse the raw
+// upstream bodies returned verbatim by the Netlify proxy (X-Periphery-Raw: 1).
 bool parse_weather_body(const String &body, Weather &w);
 bool parse_forecast_body(const String &body, Forecast &f);
 bool parse_extip_body(const String &body, String &ip);

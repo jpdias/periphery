@@ -2,8 +2,8 @@
 #include <Arduino.h>
 
 // Sun + Moon rise/set, moon phase and illumination for the current local day,
-// fetched once per day from sunrise-sunset.org v2 over plain HTTP (no TLS, no API
-// key). Returns ISO 8601 local times; the glyph phase is derived from the name.
+// fetched once per day from the Netlify proxy (moon.js -> NASA JPL Horizons) over
+// TLS. Returns ISO 8601 times; the glyph phase is derived from the name.
 struct MoonInfo {
   char  sunrise[6] = {0};    // "HH:MM" local, empty if none
   char  sunset[6] = {0};
@@ -23,9 +23,9 @@ const MoonInfo& moon_data();
 // Synchronous, deterministic fetch used at boot (and anything that can afford to
 // block). Blocks until the response is read and parsed or it times out. Returns
 // true on success. This is the reliable path — no FSM interleaving, no contention
-// with the flight fetcher. Sets gFetchedYday on success so moon_tick() won't
+// with the other TLS fetchers. Sets gFetchedYday on success so moon_tick() won't
 // re-fetch the same local day.
 bool moon_fetch_blocking(unsigned long timeoutMs = 12000);
 
-// Parse a USNO rstt/oneday GeoJSON body into out. Returns true on success.
+// Parse a proxy moon.js (Horizons-shaped) body into out. Returns true on success.
 bool parse_moon_body(const String &body, MoonInfo &out);

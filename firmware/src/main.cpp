@@ -214,8 +214,9 @@ void setup() {
    // All the "once-per-day" data is fetched here, synchronously and in a fixed
    // order, with every step shown on screen. This removes the non-deterministic
    // FSM races (moon sometimes not loading, radar freezing) by ensuring each
-   // fetch either completes or times out cleanly before the next begins, and that
-   // the only two TLS sessions (moon, then flight) never overlap.
+   // fetch either completes or times out cleanly before the next begins. Every
+   // fetch goes through the Netlify proxy over TLS; each blocking call holds the
+   // tlslock for its duration, so TLS sessions never overlap.
    const unsigned long BOOT_TIMEOUT = 30000;
    unsigned long bootStart = millis();
 
@@ -229,7 +230,8 @@ void setup() {
    }
    ui_boot_step(0, "NTP sync", time_is_synced() ? BOOT_DONE : BOOT_FAIL);
 
-   // 1) Weather + forecast + external IP (plain HTTP, no TLS contention).
+   // 1) Weather + forecast + external IP (proxied TLS, back-to-back in one
+   //    locked cycle; netfsm holds the tlslock until all three are done).
    ui_boot_step(1, "Weather", BOOT_WAIT);
    ui_boot_step(2, "Forecast", BOOT_WAIT);
    unsigned long netT = millis();
@@ -241,7 +243,7 @@ void setup() {
    ui_boot_step(2, "Forecast", net_forecast().valid ? BOOT_DONE : BOOT_FAIL);
    netfsm_mark_forecast_fresh();   // boot already fetched forecast; don't refetch now
 
-    // 2) Moon (TLS) — first TLS use, so it runs alone. Deterministic + blocking.
+    // 2) Moon (TLS via proxy) — first TLS use, so it runs alone.
     ui_boot_step(3, "Sun / Moon", BOOT_WAIT);
     bool moonOk = moon_fetch_blocking(12000);
     ui_boot_step(3, "Sun / Moon", moonOk ? BOOT_DONE : BOOT_FAIL);

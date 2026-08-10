@@ -9,8 +9,6 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
-static const char* INC_HOST = INCIDENTS_HOST;
-static const char* INC_PATH = INCIDENTS_PATH;
 static const uint16_t INC_PORT = 443;
 static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is heap-heavy)
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
@@ -214,39 +212,19 @@ static bool skip_headers(Stream &s) {
   return false;
 }
 
-// Build the incidents request. Direct mode: the full ArcGIS FeatureServer query
-// (spatial filter server-side so the payload stays tiny for the ESP8266). Proxy
-// mode: /api/incidents?lat=..&lon=.. (the function applies the same filter via
-// its ARC_GIS_URL env var). Returns host + URL.
+// Build the incidents request through the Netlify proxy: /api/incidents?lat=..
+// &lon=.. (the function applies the same spatial filter via its ARC_GIS_URL env
+// var). Returns host + URL.
 static void inc_request(String &host, String &url) {
-  char ll[40];
-  snprintf(ll, sizeof(ll), "%.6f,%.6f", cfg.lon, cfg.lat);
-  if (proxy_enabled()) {
-    host = proxy_host();
-    String q = "lat=" + String(cfg.lat, 4) +
-               "&lon=" + String(cfg.lon, 4);
-    url = proxy_path("incidents", q);
-  } else {
-    host = INC_HOST;
-    url = String(INC_PATH)
-      + "?where=1%3D1"
-      + "&outFields=ID_oc%2CNatureza%2CEstadoOcorrencia%2CConcelho%2CLocalidade%2CDataInicioOcorrencia%2CDataOcorrencia"
-      + "&geometry=" + ll
-      + "&geometryType=esriGeometryPoint"
-      + "&inSR=4326"
-      + "&distance=" + String(INCIDENT_RADIUS_M)
-      + "&units=esriSRUnit_Meter"
-      + "&spatialRel=esriSpatialRelIntersects"
-      + "&orderByFields=DataOcorrencia%20DESC"
-      + "&resultRecordCount=" + String(INCIDENT_MAX)
-      + "&f=geojson"
-      + "&outSR=4326";
-  }
+  host = proxy_host();
+  String q = "lat=" + String(cfg.lat, 4) +
+             "&lon=" + String(cfg.lon, 4);
+  url = proxy_path("incidents", q);
 }
 
 void incidents_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
-  if (!INC_HOST[0] || !INC_PATH[0]) return;   // not configured in env.h
+  if (!cfg.api_base[0]) return;   // proxy required
 
   // Global safety: abort any active phase that runs too long so the FSM can
   // never get wedged (mirrors the flight radar's watchdog).
@@ -282,14 +260,14 @@ void incidents_tick() {
       break;
 
     case P_CONN:
-      if (cli->connect(proxy_enabled() ? proxy_host() : INC_HOST, INC_PORT)) {
+      if (cli->connect(proxy_host(), INC_PORT)) {
         String host, url;
         inc_request(host, url);
         String req = String("GET ") + url + " HTTP/1.1\r\n" +
                      "Host: " + host + "\r\n" +
-                     "User-Agent: periphery\r\n";
-        if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-        req += "Connection: close\r\n\r\n";
+                     "User-Agent: periphery\r\n" +
+                     "X-Periphery-Raw: 1\r\n" +
+                     "Connection: close\r\n\r\n";
         cli->print(req);
         phase = P_WAIT;
         timer = millis();
@@ -332,7 +310,7 @@ void incidents_tick() {
 // network is up.
 bool incidents_fetch_blocking(unsigned long timeoutMs) {
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[INC] block: no wifi"); return false; }
-  if (!INC_HOST[0] || !INC_PATH[0]) return false;   // not configured in env.h
+  if (!cfg.api_base[0]) return false;   // proxy required
   if (!tls_try_acquire()) { mlog.println("[INC] block: tls busy"); return false; }
 
   BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
@@ -341,16 +319,16 @@ bool incidents_fetch_blocking(unsigned long timeoutMs) {
   c->setBufferSizes(4096, 512);
   c->setTimeout(3000);
 
-  String host = proxy_enabled() ? String(proxy_host()) : String(INC_HOST);
+  String host = String(proxy_host());
   bool ok = false;
   if (c->connect(host.c_str(), INC_PORT)) {
     String url;
     inc_request(host, url);
     String req = String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: " + host + "\r\n" +
-                 "User-Agent: periphery\r\n";
-    if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-    req += "Connection: close\r\n\r\n";
+                 "User-Agent: periphery\r\n" +
+                 "X-Periphery-Raw: 1\r\n" +
+                 "Connection: close\r\n\r\n";
     c->print(req);
     // Wait for the body, then parse straight from the stream.
     unsigned long t0 = millis();

@@ -9,22 +9,18 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
-static const char* TRAIN_HOST = TRAIN_HOST_DEF;
-static const char* TRAIN_PATH = TRAIN_PATH_DEF;
 static const uint16_t TRAIN_PORT = 443;
-static const unsigned long TRAIN_INTERVAL = 300000;  // 5 min refresh
+static const unsigned long TRAIN_INTERVAL = 300000;  // default refresh (no timetable yet)
+static const unsigned long TRAIN_MIN_INTERVAL = 60000;   // never poll faster than 1/min
+static const unsigned long TRAIN_MAX_INTERVAL = 1800000; // never go stale past 30 min
 static const unsigned long TRAIN_RETRY = 30000;      // quick retry after a defer/fail
 static const uint32_t TRAIN_MIN_HEAP = 8192;         // streaming parse: ~5-6KB contiguous is enough
 
-// Public IP API needs no keys — only a real browser User-Agent. These hosts are
-// public (see env.h) and contain no secrets.
+// Sent to the Netlify proxy; it forwards whatever the IP API needs. Public API,
+// no secrets.
 static const char* TRAIN_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                               "AppleWebKit/537.36 (KHTML, like Gecko) "
                               "Chrome/144.0.0.0 Safari/537.36";
-
-// Service-type filter required by the endpoint (URL-encoded, literal string).
-static const char* TRAIN_SVC = "INTERNACIONAL,%20ALFA,%20IC,%20IR,%20REGIONAL,"
-                               "%20URB%7CSUBUR,%20ESPECIAL,%20MERCADORIAS,%20SERVI%C3%87O";
 
 static TrainData gData;
 static bool gUpdated = false;
@@ -38,6 +34,7 @@ static Step step = S_REQ;
 static unsigned long timer = 0;
 static unsigned long lastCycle = 0;
 static unsigned long retryAt = 0;
+static unsigned long gNextIn = TRAIN_INTERVAL;   // ms until next fetch (smart TTL)
 static bool first = true;
 
 const TrainData& trains_data() { return gData; }
@@ -55,8 +52,8 @@ int trains_next_refresh_secs() {
     return (int)((retryAt - now + 999) / 1000);
   }
   unsigned long elapsed = now - lastCycle;
-  if (elapsed >= TRAIN_INTERVAL) return 0;
-  return (int)((TRAIN_INTERVAL - elapsed + 999) / 1000);
+  if (elapsed >= gNextIn) return 0;
+  return (int)((gNextIn - elapsed + 999) / 1000);
 }
 
 void trains_begin() {
@@ -65,6 +62,7 @@ void trains_begin() {
   first = true;
   lastCycle = 0;
   retryAt = 0;
+  gNextIn = TRAIN_INTERVAL;
   gData.valid = false;
   gData.count = 0;
   gData.lastUpdated = 0;
@@ -85,6 +83,7 @@ static void fail(const char *why) {
   step = S_REQ;
   first = false;
   lastCycle = millis();
+  gNextIn = TRAIN_INTERVAL;
   retryAt = millis() + TRAIN_RETRY;
 }
 
@@ -103,13 +102,13 @@ static int parse_delay(const char *obs) {
   return atoi(p + 10);
 }
 
-// Build the IP timetable request for the configured station. Window: [now,
-// now+3h]. A 3-hour window ensures quiet stations (a train per hour) still
-// yield the full TRAIN_MAX departures; streaming parse + filter keeps the JSON
-// doc small even at busy stations. Times are local (Europe/Lisbon via nettime).
-// Returns false if the clock isn't synced or no station is set. In direct mode
-// the date-times use %20 (space) in the path; in proxy mode they're plain query
-// params for /api/trains?station=..&date=..&start=..&end=..
+// Build the IP timetable request through the Netlify proxy: /api/trains with
+// station/date/start/end query params (the function translates them to the IP
+// API path server-side). Window: [now, now+3h]. A 3-hour window ensures quiet
+// stations (a train per hour) still yield the full TRAIN_MAX departures;
+// streaming parse + filter keeps the JSON doc small even at busy stations.
+// Times are local (Europe/Lisbon via nettime). Returns false if the clock isn't
+// synced or no station is set.
 static bool train_request(String &host, String &url) {
   if (!cfg.ip_station[0]) return false;
   int h, m, s, dow, day, mon, yr;
@@ -126,18 +125,12 @@ static bool train_request(String &host, String &url) {
   if (eh >= 24) { eh = 23; em = 59; }
   snprintf(end, sizeof(end), "%02d:%02d", eh % 100, em % 100);
 
-  if (proxy_enabled()) {
-    host = proxy_host();
-    String q = "station=" + String(cfg.ip_station) +
-               "&date=" + String(date) +
-               "&start=" + String(start) +
-               "&end=" + String(end);
-    url = proxy_path("trains", q);
-  } else {
-    host = TRAIN_HOST;
-    url = String(TRAIN_PATH) + "/partidas-chegadas/" + cfg.ip_station + "/" +
-          date + "%20" + start + "/" + date + "%20" + end + "/" + TRAIN_SVC;
-  }
+  host = proxy_host();
+  String q = "station=" + String(cfg.ip_station) +
+             "&date=" + String(date) +
+             "&start=" + String(start) +
+             "&end=" + String(end);
+  url = proxy_path("trains", q);
   return true;
 }
 
@@ -213,6 +206,29 @@ class ChunkedStream : public Stream {
   bool identity = false;
 };
 
+// Smart TTL: once we have a timetable, only refetch when the next departure has
+// passed — the display is then stale and the next train is the new head of the
+// list. Clamped so a busy station never polls faster than TRAIN_MIN_INTERVAL and
+// a quiet one never goes stale past TRAIN_MAX_INTERVAL (delays/cancellations
+// still get picked up within that bound).
+static void set_next_refresh() {
+  gNextIn = TRAIN_INTERVAL;
+  if (!gData.valid || gData.count == 0) return;
+  int h, m, s, dow, day, mon, yr;
+  time_now(h, m, s, dow, day, mon, yr);
+  if (yr < 2020) return;                          // clock not synced yet
+  int nh = 0, nm = 0;
+  if (sscanf(gData.trains[0].departure, "%d:%d", &nh, &nm) != 2) return;
+  long delta = (long)(nh * 3600 + nm * 60) - (long)(h * 3600 + m * 60);
+  if (delta < -600) delta += 86400;               // clearly earlier today → tomorrow
+  if (delta <= 0) { gNextIn = TRAIN_MIN_INTERVAL; return; }  // head train just left → refetch soon
+  unsigned long ms = (unsigned long)delta * 1000UL;
+  if (ms < TRAIN_MIN_INTERVAL) ms = TRAIN_MIN_INTERVAL;
+  if (ms > TRAIN_MAX_INTERVAL) ms = TRAIN_MAX_INTERVAL;
+  gNextIn = ms;
+  mlog.printf("[TRN] smart refresh in %lus\n", ms / 1000);
+}
+
 // Parse straight from the TLS stream with a small filter so the working doc
 // stays tiny (the de-chunking wrapper above never buffers the full body). The
 // 30-min window keeps the filtered result well within the auto-growing doc.
@@ -262,6 +278,7 @@ static void parse_timetable(Stream &s) {
   gData.lastUpdated = time_utc_now();
   gData.lastOk = true;
   gUpdated = true;
+  set_next_refresh();
   mlog.printf("[TRN] %d departures\n", n);
 }
 
@@ -292,6 +309,7 @@ static void start_fetch() {
 
 void trains_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
+  if (!cfg.api_base[0]) return;   // proxy required
   if (!cfg.ip_station[0]) return;   // no station configured
 
   // Global watchdog so the FSM can never wedge.
@@ -299,25 +317,25 @@ void trains_tick() {
 
   switch (phase) {
     case P_IDLE:
-      if (first || millis() - lastCycle >= TRAIN_INTERVAL ||
+      if (first || millis() - lastCycle >= gNextIn ||
           (retryAt > 0 && millis() >= retryAt)) {
         start_fetch();
       }
       break;
 
     case P_API: {
-      // --- GET the IP timetable (no credentials needed) ---
+      // --- GET the timetable via the Netlify proxy (no credentials needed) ---
       if (step == S_REQ) {
         if (!cli || !cli->connected()) {
-          if (cli && cli->connect(proxy_enabled() ? proxy_host() : TRAIN_HOST, TRAIN_PORT)) {
+          if (cli && cli->connect(proxy_host(), TRAIN_PORT)) {
             String host, q;
             if (!train_request(host, q)) { fail("no query"); break; }
             String req = String("GET ") + q + " HTTP/1.1\r\n" +
                          "Host: " + host + "\r\n" +
                          "User-Agent: " + TRAIN_UA + "\r\n" +
-                         "Accept: application/json\r\n";
-            if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-            req += "Connection: close\r\n\r\n";
+                         "Accept: application/json\r\n" +
+                         "X-Periphery-Raw: 1\r\n" +
+                         "Connection: close\r\n\r\n";
             cli->print(req);
             step = S_HDR;
             timer = millis();
@@ -355,6 +373,7 @@ void trains_tick() {
 // lock), so it's guaranteed to succeed if the network is up.
 bool trains_fetch_blocking(unsigned long timeoutMs) {
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[TRN] block: no wifi"); return false; }
+  if (!cfg.api_base[0]) return false;
   if (!cfg.ip_station[0]) return false;
   if (ESP.getMaxFreeBlockSize() < TRAIN_MIN_HEAP) {
     mlog.printf("[TRN] block: low heap blk=%u, deferring\n", (unsigned)ESP.getMaxFreeBlockSize());
@@ -370,7 +389,7 @@ bool trains_fetch_blocking(unsigned long timeoutMs) {
 
   bool ok = false;
   unsigned long t0 = millis();
-  String host = proxy_enabled() ? String(proxy_host()) : String(TRAIN_HOST);
+  String host = String(proxy_host());
   if (c->connect(host.c_str(), TRAIN_PORT)) {
     String q;
     if (!train_request(host, q)) { mlog.println("[TRN] block: no query"); }
@@ -378,9 +397,9 @@ bool trains_fetch_blocking(unsigned long timeoutMs) {
       String req = String("GET ") + q + " HTTP/1.1\r\n" +
                    "Host: " + host + "\r\n" +
                    "User-Agent: " + TRAIN_UA + "\r\n" +
-                   "Accept: application/json\r\n";
-      if (proxy_enabled()) req += "X-Periphery-Raw: 1\r\n";
-      req += "Connection: close\r\n\r\n";
+                   "Accept: application/json\r\n" +
+                   "X-Periphery-Raw: 1\r\n" +
+                   "Connection: close\r\n\r\n";
       c->print(req);
       uint8_t m = 0;
       while (millis() - t0 < timeoutMs) {

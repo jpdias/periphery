@@ -1,8 +1,9 @@
 #include "logbuf.h"
 #include "netfsm.h"
 #include "config.h"
-#include "env.h"
 #include "httpfsm.h"
+#include "netproxy.h"
+#include "tlslock.h"
 #include <ESP8266WiFi.h>
 
 enum NetTask { TASK_WEATHER, TASK_FORECAST, TASK_EXTIP };
@@ -19,6 +20,10 @@ static unsigned long netInterval = 600000;
 static unsigned long netLastCycle = 0;
 static bool netFirst = true;
 static bool netActive = false;
+
+// The weather->forecast->ip cycle holds the TLS lock for its whole run so the
+// three quick proxied GETs run back-to-back without contention.
+static bool netHoldsLock = false;
 
 // Forecast is "slow" data: fetch it at boot and twice a day (midnight + noon,
 // local). Track which half-day we last fetched so we don't hammer the API on
@@ -57,34 +62,34 @@ void netfsm_begin(unsigned long intervalMs) {
   netLastCycle = 0;
   netFirst = true;
   netActive = false;
+  netHoldsLock = false;
   gForecastHalfDay = -1;   // boot's blocking fetch will set gForecast.valid
   http.consume();
 }
 
+// Begin a task. The TLS lock must already be held (acquired in netfsm_tick
+// when the cycle starts).
 static void start_task(NetTask t) {
-  String host, url;
+  String url;
   switch (t) {
     case TASK_WEATHER:
-      host = WEATHER_HOST;
-      url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
-            "&longitude=" + String(cfg.lon, 4) +
-            "&current=temperature_2m,relative_humidity_2m,weather_code" +
-            "&daily=sunrise,sunset&forecast_days=1&timezone=auto";
+      url = proxy_path("weather", "lat=" + String(cfg.lat, 4) +
+                        "&lon=" + String(cfg.lon, 4));
       break;
     case TASK_FORECAST:
-      host = WEATHER_HOST;
-      url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
-            "&longitude=" + String(cfg.lon, 4) +
-            "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
-            "&forecast_days=4&timezone=auto";
+      url = proxy_path("forecast", "lat=" + String(cfg.lat, 4) +
+                        "&lon=" + String(cfg.lon, 4));
       break;
     case TASK_EXTIP:
-      host = EXTIP_HOST;
-      url = "/json";
+      url = proxy_path("ip", "");
       break;
   }
-  mlog.printf("[NET] start %d -> %s%s\n", t, host.c_str(), url.c_str());
-  http.begin(host, url);
+  mlog.printf("[NET] start %d -> %s\n", t, url.c_str());
+  if (!http.begin(proxy_host(), url, 443, true, "X-Periphery-Raw: 1")) {
+    tls_release();
+    netHoldsLock = false;
+    netActive = false;
+  }
 }
 
 static void finish_task(NetTask t, const String &raw) {
@@ -111,15 +116,20 @@ static void next_task() {
     gUpdated = true;
     gFirstDone = true;
     netActive = false;
+    tls_release();
+    netHoldsLock = false;
     mlog.println("[NET] cycle complete");
   }
 }
 
 void netfsm_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
+  if (!cfg.api_base[0]) return;   // proxy required; nothing to fetch without it
 
   if (!netActive) {
     if (netFirst || millis() - netLastCycle >= netInterval) {
+      if (!tls_try_acquire()) return;   // another TLS session busy; retry next loop
+      netHoldsLock = true;
       netFirst = false;
       netActive = true;
       netTask = TASK_WEATHER;

@@ -5,7 +5,7 @@
 static char gHost[128] = {0};
 
 bool proxy_enabled() {
-  return cfg.use_api_proxy && cfg.api_base[0] && proxy_host()[0];
+  return cfg.api_base[0] && proxy_host()[0];
 }
 
 // Extract the host (no scheme, no path) from cfg.api_base into a static buffer.
