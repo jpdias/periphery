@@ -80,6 +80,7 @@ export const WARNINGS_TTL = Number(env("WARNINGS_TTL", "300"));
 
 // --- Satellites (Celestrak TLE + satellite.js SGP4) ---
 export const CELESTRAK_BASE = env("CELESTRAK_BASE", "https://celestrak.org/NORAD/elements/gp.php");
+export const TLE_FALLBACK_BASE = env("TLE_FALLBACK_BASE", "https://tle.ivanstanojevic.me/api/tle");
 export const SAT_TTL = Number(env("SAT_TTL", "300"));
 export const SAT_DEFAULTS = [
   { id: "25544", name: "ISS" },

@@ -1,5 +1,5 @@
-import { handleOptions, ok, fail, requireParams, upstreamText, toQuery } from "./utils.js";
-import { CELESTRAK_BASE, SAT_TTL, SAT_DEFAULTS } from "./env.js";
+import { handleOptions, ok, fail, requireParams, upstreamText, upstreamJson, toQuery } from "./utils.js";
+import { CELESTRAK_BASE, TLE_FALLBACK_BASE, SAT_TTL, SAT_DEFAULTS } from "./env.js";
 import {
   twoline2satrec, propagate, eciToEcf, ecfToLookAngles,
   degreesToRadians, radiansToDegrees, gstime,
@@ -48,13 +48,25 @@ function findPasses(satrec, observerGd, start, hours) {
 }
 
 async function fetchTle(noradId) {
-  const q = toQuery({ CATNR: noradId, FORMAT: "TLE" });
-  const { status, body } = await upstreamText(`${CELESTRAK_BASE}?${q}`);
-  if (status !== 200 || !body) return null;
-  const lines = body.split("\n").map(l => l.trimEnd());
-  const tle = lines.filter(l => /^[12] /.test(l));
-  if (tle.length < 2) return null;
-  return { line1: tle[0], line2: tle[1] };
+  // Primary: Celestrak gp.php by catalog number. Fallback: TLE API mirror.
+  try {
+    const q = toQuery({ CATNR: noradId, FORMAT: "TLE" });
+    const { status, body } = await upstreamText(`${CELESTRAK_BASE}?${q}`, { timeoutMs: 4000 });
+    if (status === 200 && body) {
+      const lines = body.split("\n").map(l => l.trimEnd());
+      const tle = lines.filter(l => /^[12] /.test(l));
+      if (tle.length >= 2) return { line1: tle[0], line2: tle[1] };
+    }
+  } catch { /* fall through to mirror */ }
+
+  try {
+    const { status, body } = await upstreamJson(`${TLE_FALLBACK_BASE}/${noradId}`);
+    if (status === 200 && body && body.line1 && body.line2) {
+      return { line1: body.line1, line2: body.line2 };
+    }
+  } catch { /* no TLE available */ }
+
+  return null;
 }
 
 export default async function handler(event) {
