@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090c">
+  <meta name="description" content="PTMonitor — live dashboard of weather, incidents, trains, flights and moon phase.">
+  <title>PTMonitor</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23da291c'/><rect width='40' height='100' fill='%23046a38'/><circle cx='40' cy='50' r='15' fill='%23ffcc00'/><circle cx='40' cy='50' r='6' fill='none' stroke='%23da291c' stroke-width='2'/></svg>">
+   <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">PT<span class="accent">Monitor</span></div>
+    <div class="loc-chip" id="loc-chip" title="Current coordinates">
+      <span class="loc-dot"></span>
+      <span id="loc-coords">--, --</span>
+      <span id="loc-name" class="loc-name"></span>
+    </div>
+    <div class="status" id="status">
+      <span class="dot"></span><span id="status-text">loading…</span>
+    </div>
+    <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <main class="grid" id="grid">
+    <!-- Clock -->
+    <section class="card clock-card" data-widget="clock">
+      <div class="clock-row">
+        <div class="clock-time" id="clock-time">--:--:--</div>
+        <div class="clock-date" id="clock-date"></div>
+      </div>
+    </section>
+
+    <!-- Extra clocks are created dynamically by renderClockCards() -->
+
+    <!-- Sun / Moon rise & set -->
+    <section class="card sunmoon-card" data-widget="sunmoon">
+      <h2 class="card-title" data-tip="Sunrise &amp; sunset, moon phase and moon rise/set for your location">Sun &amp; Moon <span class="upd" id="upd-sunmoon"></span></h2>
+      <div class="sunmoon" id="sunmoon">
+        <div class="sunmoon-row"><span class="sm-ic">☀</span><span class="sm-label">rise</span><span id="sun-rise">--:--</span><span class="sm-ic dim">↓</span><span class="sm-label">set</span><span id="sun-set">--:--</span></div>
+        <div class="sunmoon-row"><span class="sm-ic">☾</span><span class="sm-label">rise</span><span id="moon-rise">--:--</span><span class="sm-ic dim">↓</span><span class="sm-label">set</span><span id="moon-set">--:--</span></div>
+        <div class="sunmoon-moon">
+          <div class="moon-phase" id="moon-phase"></div>
+          <div class="moon-label" id="moon-label">moon</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Weather -->
+    <section class="card weather-card" data-widget="weather">
+      <h2 class="card-title" data-tip="Current conditions from Open-Meteo — temperature, humidity, wind and cloud">Weather <span class="upd" id="upd-weather"></span></h2>
+      <div class="weather-main">
+        <div class="weather-icon" id="weather-icon">—</div>
+        <div class="weather-temp" id="weather-temp">--°</div>
+        <div class="weather-desc" id="weather-desc">—</div>
+      </div>
+      <div class="weather-grid" id="weather-grid"></div>
+    </section>
+
+    <!-- Solar -->
+    <section class="card solar-card" data-widget="solar">
+      <h2 class="card-title" data-tip="Live solar X-ray flux, Kp geomagnetic index and NOAA SWPC alerts">Space Weather <span class="upd" id="upd-solar"></span></h2>
+      <div class="solar-main">
+        <div class="solar-big" id="solar-flare">--</div>
+        <div class="solar-side">
+          <div class="solar-big-label" id="solar-flare-desc">X-ray flux</div>
+          <div class="solar-flare-scale" id="solar-scale">
+            <span class="fs-a">A</span><span class="fs-b">B</span><span class="fs-c">C</span><span class="fs-m">M</span><span class="fs-x">X</span>
+            <i class="fs-marker" id="solar-scale-marker"></i>
+          </div>
+        </div>
+      </div>
+      <div class="solar-grid" id="solar-grid"></div>
+    </section>
+
+    <!-- Forecast -->
+    <section class="card forecast-card" data-widget="forecast">
+      <h2 class="card-title" data-tip="IPMA daily forecast — high/low, UV, rain probability and wind">Forecast <span class="upd" id="upd-forecast"></span></h2>
+      <div class="forecast-row" id="forecast-row"></div>
+    </section>
+
+    <!-- Incidents -->
+    <section class="card incidents-card" data-widget="incidents">
+      <h2 class="card-title" data-tip="Nearby road incidents from the Portuguese National Road Authority (IP)">Incidents <span class="sub" id="incident-count"></span><span class="upd" id="upd-incidents"></span></h2>
+      <ul class="incident-list" id="incident-list"></ul>
+    </section>
+
+    <!-- Weather warnings (IPMA) -->
+    <section class="card warnings-card" data-widget="warnings">
+      <h2 class="card-title" data-tip="IPMA weather warnings — wind, rain, snow and coastal risk in force">Avisos <span class="sub" id="warnings-count"></span><span class="upd" id="upd-warnings"></span></h2>
+      <ul class="warning-list" id="warning-list"></ul>
+    </section>
+
+    <!-- Trains -->
+    <section class="card trains-card" data-widget="trains">
+      <h2 class="card-title" data-tip="Next departures from the configured Comboios de Portugal station">Trains <span class="sub" id="train-station"></span><span class="upd" id="upd-trains"></span></h2>
+      <ul class="train-list" id="train-list"></ul>
+    </section>
+
+    <!-- Flights -->
+    <section class="card flights-card" data-widget="flights">
+      <h2 class="card-title" data-tip="Live ADS-B aircraft within range of your location">Flights <span class="sub" id="flight-count"></span><span class="upd" id="upd-flights"></span></h2>
+      <ul class="flight-list" id="flight-list"></ul>
+    </section>
+
+    <!-- Radiation -->
+    <section class="card radiation-card" data-widget="radiation">
+      <h2 class="card-title" data-tip="Ambient gamma radiation dose rate from the nearest Radares site">Radiation <span class="sub" id="rad-station"></span><span class="upd" id="upd-radiation"></span></h2>
+      <div class="rad-main">
+        <div class="rad-big" id="rad-value">—</div>
+        <div class="rad-side">
+          <div class="rad-label" id="rad-unit">nSv/h</div>
+          <div class="rad-scale" id="rad-scale">
+            <span class="rs-ok">bg</span><span class="rs-warn">watch</span><span class="rs-high">high</span>
+            <i class="rs-marker" id="rad-marker"></i>
+          </div>
+        </div>
+      </div>
+      <div class="rad-grid" id="rad-grid"></div>
+    </section>
+
+    <!-- Air quality -->
+    <section class="card air-card" data-widget="airquality">
+      <h2 class="card-title" data-tip="Particulate matter and gas concentrations from the nearest QualAr station">Air Quality <span class="sub" id="air-station"></span><span class="upd" id="upd-airquality"></span></h2>
+      <div class="air-main">
+        <div class="air-big" id="air-value">—</div>
+        <div class="air-side">
+          <div class="air-label" id="air-label">IQAR</div>
+          <div class="air-scale" id="air-scale">
+            <span class="as-1">1</span><span class="as-2">2</span><span class="as-3">3</span><span class="as-4">4</span><span class="as-5">5</span>
+            <i class="as-marker" id="air-marker"></i>
+          </div>
+        </div>
+      </div>
+      <div class="air-grid" id="air-grid"></div>
+    </section>
+
+    <!-- Meteor showers (astro calendar) -->
+    <section class="card astro-card" data-widget="astro">
+      <h2 class="card-title" data-tip="Meteor showers currently active and peak dates">Meteor Showers <span class="upd" id="upd-astro"></span></h2>
+      <ul class="astro-list" id="astro-list"></ul>
+    </section>
+
+    <!-- Uptime monitors -->
+    <section class="card uptime-card" data-widget="uptime">
+      <h2 class="card-title" data-tip="Response time of the upstream data APIs — green means all reachable">Uptime <span class="sub" id="uptime-count"></span><span class="upd" id="upd-uptime"></span></h2>
+      <ul class="uptime-list" id="uptime-list"></ul>
+    </section>
+
+
+
+    <!-- Lightning -->
+    <section class="card bolt-card" data-widget="lightning">
+      <h2 class="card-title" data-tip="Cloud-to-ground lightning detected within the configured radius">Lightning <span class="sub" id="bolt-count"></span><span class="upd" id="upd-lightning"></span></h2>
+      <ul class="bolt-list" id="bolt-list"></ul>
+    </section>
+
+    <!-- Satellites -->
+    <section class="card satellites-card" data-widget="satellites">
+      <h2 class="card-title" data-tip="Visible satellite passes (ISS, Tiangong, Hubble) computed for your location">Satellites <span class="sub" id="sat-count"></span><span class="upd" id="upd-satellites"></span></h2>
+      <ul class="sat-list" id="sat-list"></ul>
+    </section>
+
+    <!-- National grid (REN) -->
+    <section class="card ren-card" data-widget="ren">
+      <h2 class="card-title" data-tip="Portuguese national grid — electricity demand and renewable split">National Grid <span class="sub" id="ren-sub"></span><span class="upd" id="upd-ren"></span></h2>
+      <div class="ren-main">
+        <div class="ren-big" id="ren-consumption">—</div>
+        <div class="ren-side">
+          <div class="ren-label" id="ren-label">demand</div>
+          <div class="ren-scale" id="ren-scale">
+            <span class="ren-re">renewable</span>
+            <span class="ren-fossil">fossil</span>
+            <i class="ren-marker" id="ren-marker"></i>
+          </div>
+        </div>
+      </div>
+      <div class="ren-sources" id="ren-sources"></div>
+      <div class="ren-price" id="ren-price"></div>
+    </section>
+
+    <!-- Seismic (IPMA) -->
+    <section class="card seismic-card" data-widget="seismic">
+      <h2 class="card-title" data-tip="Latest earthquakes from IPMA/EMSC and USGS near your location">Seismic <span class="sub" id="seismic-count"></span><span class="upd" id="upd-seismic"></span></h2>
+      <div class="seismo-scale" id="seismo-scale">
+        <span class="ss-1">&lt;2</span><span class="ss-2">2</span><span class="ss-3">3</span><span class="ss-4">4</span><span class="ss-5">5+</span>
+        <i class="ss-marker" id="seismo-marker"></i>
+      </div>
+      <ul class="seismic-list" id="seismic-list"></ul>
+    </section>
+
+    <!-- Fuel prices -->
+    <section class="card fuel-card" data-widget="fuel">
+      <h2 class="card-title" data-tip="Fuel prices at Portuguese stations (combustíveis DGEG)">Fuel <span class="sub" id="fuel-sub"></span><span class="upd" id="upd-fuel"></span></h2>
+      <ul class="fuel-list" id="fuel-list"></ul>
+    </section>
+
+    <!-- Forex -->
+    <section class="card fx-card" data-widget="fx">
+      <h2 class="card-title" data-tip="Foreign exchange rates against the Euro">FX <span class="sub" id="fx-sub"></span><span class="upd" id="upd-fx"></span></h2>
+      <ul class="fx-list" id="fx-list"></ul>
+    </section>
+
+     <!-- Lisbon stock index -->
+     <section class="card psi-card" data-widget="psi">
+       <h2 class="card-title" data-tip="Portuguese stock index PSI-20 market close">PSI <span class="sub" id="psi-sub"></span><span class="upd" id="upd-psi"></span></h2>
+       <div class="psi-main">
+         <div class="psi-big" id="psi-price">—</div>
+         <div class="psi-side">
+           <div class="psi-label" id="psi-change">—</div>
+           <div class="psi-meta" id="psi-meta"></div>
+         </div>
+       </div>
+       <div class="psi-range" id="psi-range"></div>
+     </section>
+
+     <!-- Propagation -->
+     <section class="card propagation-card" data-widget="propagation">
+       <h2 class="card-title" data-tip="HF radio conditions — SFI solar flux, A/Kp geomagnetic indices, Dst storm index and gray-line signal path">Propagation <span class="sub" id="propagation-sub"></span><span class="upd" id="upd-propagation"></span></h2>
+       <div class="prop-indices">
+         <div class="prop-row"><span class="prop-label">SFI</span><span class="prop-value" id="propagation-sfi">—</span></div>
+         <div class="prop-row"><span class="prop-label">A-index</span><span class="prop-value" id="propagation-a">—</span></div>
+         <div class="prop-row"><span class="prop-label">Kp</span><span class="prop-value" id="propagation-kp">—</span></div>
+         <div class="prop-row"><span class="prop-label">Dst</span><span class="prop-value" id="propagation-dst">—</span></div>
+         <div class="prop-row"><span class="prop-label">Gray-line</span><span class="prop-value" id="propagation-gray">—</span></div>
+       </div>
+       <ul class="propagation-list" id="propagation-bands"></ul>
+       <div class="prop-overall" id="propagation-overall">—</div>
+     </section>
+
+    <!-- System -->
+    <section class="card system-card" data-widget="system">
+      <h2 class="card-title" data-tip="Detected public IP and configured coordinates of this dashboard">System <span class="upd" id="upd-system"></span></h2>
+      <div class="sys-row"><span>Location</span><span id="sys-loc">—</span></div>
+      <div class="sys-row"><span>IP</span><span id="sys-ip">—</span></div>
+    </section>
+  </main>
+
+  <!-- Alert toasts -->
+  <div class="toasts" id="toasts"></div>
+
+  <!-- Shared hover tooltip -->
+  <div id="tip" class="tip hidden"></div>
+
+  <!-- Settings sidebar -->
+  <div class="sidebar-scrim hidden" id="settings-scrim"></div>
+  <aside class="sidebar hidden" id="settings-panel" aria-label="Settings">
+    <div class="sidebar-head">
+      <h2>Settings</h2>
+      <button id="close-settings-btn" class="icon-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+
+    <section class="side-group">
+      <h3>Location</h3>
+      <p class="hint">Shared by weather, flights, radiation, etc.</p>
+      <label>Latitude
+        <input type="number" step="any" id="cfg-lat" placeholder="41.17">
+      </label>
+      <label>Longitude
+        <input type="number" step="any" id="cfg-lon" placeholder="-8.43">
+      </label>
+      <div class="btn-row">
+        <button id="loc-btn" class="ghost">Use my location</button>
+      </div>
+    </section>
+
+    <section class="side-group">
+      <h3>Alerts</h3>
+      <p class="hint">Flash the tab title + show a toast on new items</p>
+      <div id="alert-toggles"></div>
+    </section>
+
+    <section class="side-group">
+      <h3>Clocks</h3>
+      <div class="wsec">
+        <div class="wsec-head">
+          <span class="wsec-title">All clocks</span>
+          <input type="checkbox" class="w-toggle" id="cfg-clocks-all" aria-label="Show all clocks">
+        </div>
+      </div>
+      <div class="wsec" data-widget="clock">
+        <div class="wsec-head">
+          <span class="wsec-title">Clock (main)</span>
+          <input type="checkbox" class="w-toggle" data-widget="clock" aria-label="Show Clock">
+        </div>
+      </div>
+      <div id="small-clock-configs"></div>
+      <div class="btn-row">
+        <button id="add-clock-btn" class="ghost">+ Add clock</button>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="sunmoon">
+      <div class="wsec-head">
+        <span class="wsec-title">Sun &amp; Moon</span>
+        <input type="checkbox" class="w-toggle" data-widget="sunmoon" aria-label="Show Sun &amp; Moon">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="weather">
+      <div class="wsec-head">
+        <span class="wsec-title">Weather</span>
+        <input type="checkbox" class="w-toggle" data-widget="weather" aria-label="Show Weather">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="solar">
+      <div class="wsec-head">
+        <span class="wsec-title">Space Weather</span>
+        <input type="checkbox" class="w-toggle" data-widget="solar" aria-label="Show Space Weather">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="forecast">
+      <div class="wsec-head">
+        <span class="wsec-title">Forecast</span>
+        <input type="checkbox" class="w-toggle" data-widget="forecast" aria-label="Show Forecast">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="incidents">
+      <div class="wsec-head">
+        <span class="wsec-title">Incidents</span>
+        <input type="checkbox" class="w-toggle" data-widget="incidents" aria-label="Show Incidents">
+      </div>
+      <div class="wcfg">
+        <label>Incident radius (km)
+          <input type="number" step="1" id="cfg-incident-radius" value="20">
+        </label>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="warnings">
+      <div class="wsec-head">
+        <span class="wsec-title">Avisos (IPMA)</span>
+        <input type="checkbox" class="w-toggle" data-widget="warnings" aria-label="Show Avisos">
+      </div>
+      <p class="hint">Uses the nearest district to your location</p>
+    </section>
+
+    <section class="side-group wsec" data-widget="trains">
+      <div class="wsec-head">
+        <span class="wsec-title">Trains</span>
+        <input type="checkbox" class="w-toggle" data-widget="trains" aria-label="Show Trains">
+      </div>
+      <div class="wcfg">
+        <label>IP station (trains)
+          <input type="text" id="cfg-station" placeholder="node ID, e.g. 9402006" readonly>
+        </label>
+        <div class="row-grow">
+          <label class="grow">Station name
+            <input type="text" id="cfg-station-name" placeholder="PORTO-CAMPANHA">
+          </label>
+          <button id="clear-station-btn" class="btn-square" title="Clear station" aria-label="Clear station">✕</button>
+        </div>
+        <label>Search station by name
+          <input type="text" id="cfg-station-q" placeholder="e.g. Campanhã (accents matter)">
+        </label>
+        <div class="btn-row">
+          <button id="search-station-btn" class="ghost">Search</button>
+        </div>
+        <div id="station-results" class="stnlist"></div>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="flights">
+      <div class="wsec-head">
+        <span class="wsec-title">Flights</span>
+        <input type="checkbox" class="w-toggle" data-widget="flights" aria-label="Show Flights">
+      </div>
+      <div class="wcfg">
+        <label>Flight range (nm)
+          <input type="number" step="1" id="cfg-range" value="25">
+        </label>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="radiation">
+      <div class="wsec-head">
+        <span class="wsec-title">Radiation</span>
+        <input type="checkbox" class="w-toggle" data-widget="radiation" aria-label="Show Radiation">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="airquality">
+      <div class="wsec-head">
+        <span class="wsec-title">Air Quality</span>
+        <input type="checkbox" class="w-toggle" data-widget="airquality" aria-label="Show Air Quality">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="astro">
+      <div class="wsec-head">
+        <span class="wsec-title">Meteor Showers</span>
+        <input type="checkbox" class="w-toggle" data-widget="astro" aria-label="Show Meteor Showers">
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="uptime">
+      <div class="wsec-head">
+        <span class="wsec-title">Uptime</span>
+        <input type="checkbox" class="w-toggle" data-widget="uptime" aria-label="Show Uptime">
+      </div>
+      <div class="wcfg">
+        <label>One per line: label | url
+          <textarea id="cfg-uptime-sites" rows="5" spellcheck="false" placeholder="Home | http://192.168.1.1&#10;Open-Meteo | https://api.open-meteo.com"></textarea>
+        </label>
+      </div>
+    </section>
+
+
+
+    <section class="side-group wsec" data-widget="lightning">
+      <div class="wsec-head">
+        <span class="wsec-title">Lightning</span>
+        <input type="checkbox" class="w-toggle" data-widget="lightning" aria-label="Show Lightning">
+      </div>
+      <div class="wcfg">
+        <label>Lightning radius (km)
+          <input type="number" step="1" id="cfg-lightning-radius" value="500">
+        </label>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="satellites">
+      <div class="wsec-head">
+        <span class="wsec-title">Satellites</span>
+        <input type="checkbox" class="w-toggle" data-widget="satellites" aria-label="Show Satellites">
+      </div>
+      <div class="wcfg">
+        <label>One per line: name | NORAD ID
+          <textarea id="cfg-satellites" rows="4" spellcheck="false" placeholder="ISS | 25544&#10;Tiangong | 48274&#10;Hubble | 20580"></textarea>
+        </label>
+      </div>
+    </section>
+
+     <section class="side-group wsec" data-widget="system">
+       <div class="wsec-head">
+         <span class="wsec-title">System</span>
+         <input type="checkbox" class="w-toggle" data-widget="system" aria-label="Show System">
+       </div>
+     </section>
+
+     <section class="side-group wsec" data-widget="propagation">
+       <div class="wsec-head">
+         <span class="wsec-title">Propagation</span>
+         <input type="checkbox" class="w-toggle" data-widget="propagation" aria-label="Show Propagation">
+       </div>
+       <div class="wcfg">
+         <!-- no config needed -->
+       </div>
+     </section>
+
+     <section class="side-group">
+       <h3>Units</h3>
+       <p class="hint">Choose preferred units for display</p>
+      <div class="wsec" data-widget="units">
+        <div class="wsec-head">
+          <span class="wsec-title">Units</span>
+          <input type="checkbox" class="w-toggle" data-widget="units" aria-label="Show Units">
+        </div>
+        <div class="wcfg">
+          <label>Temperature
+            <select id="cfg-temp-unit">
+              <option value="C">°C</option>
+              <option value="F">°F</option>
+            </select>
+          </label>
+          <label>Wind speed
+            <select id="cfg-wind-unit">
+              <option value="kmh">km/h</option>
+              <option value="mph">mph</option>
+            </select>
+          </label>
+          <label>Distance
+            <select id="cfg-dist-unit">
+              <option value="km">km</option>
+              <option value="mi">mi</option>
+            </select>
+          </label>
+          <label>Pressure
+            <select id="cfg-pressure-unit">
+              <option value="hPa">hPa</option>
+              <option value="inHg">inHg</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="ren">
+      <div class="wsec-head">
+        <span class="wsec-title">National Grid (REN)</span>
+        <input type="checkbox" class="w-toggle" data-widget="ren" aria-label="Show National Grid">
+      </div>
+      <p class="hint">Live demand, renewable share and daily energy totals</p>
+    </section>
+
+    <section class="side-group wsec" data-widget="seismic">
+      <div class="wsec-head">
+        <span class="wsec-title">Seismic (IPMA)</span>
+        <input type="checkbox" class="w-toggle" data-widget="seismic" aria-label="Show Seismic">
+      </div>
+      <p class="hint">Latest quakes for Portugal, distances from your location</p>
+      <div class="wcfg">
+        <label>Quake search radius (km)
+          <input type="number" step="1" id="cfg-quake-radius" value="1500">
+        </label>
+      </div>
+    </section>
+
+    <section class="side-group wsec" data-widget="fuel">
+      <div class="wsec-head">
+        <span class="wsec-title">Fuel Prices</span>
+        <input type="checkbox" class="w-toggle" data-widget="fuel" aria-label="Show Fuel Prices">
+      </div>
+      <p class="hint">National average €/L from DGEG (API Aberta)</p>
+    </section>
+
+    <section class="side-group wsec" data-widget="fx">
+      <div class="wsec-head">
+        <span class="wsec-title">FX Rates</span>
+        <input type="checkbox" class="w-toggle" data-widget="fx" aria-label="Show FX Rates">
+      </div>
+      <p class="hint">EUR reference rates from the ECB</p>
+    </section>
+
+    <section class="side-group wsec" data-widget="psi">
+      <div class="wsec-head">
+        <span class="wsec-title">PSI (Lisbon index)</span>
+        <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show PSI">
+      </div>
+      <p class="hint">PSI-20 level & change (Yahoo Finance)</p>
+    </section>
+
+    <div class="btn-row sticky-save">
+      <button id="save-btn" class="primary">Save</button>
+      <button id="cancel-btn" class="ghost">Cancel</button>
+    </div>
+  </aside>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "PTMonitor",
+  "short_name": "PTMonitor",
+  "description": "Live dashboard of weather, incidents, trains, flights and moon phase.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23da291c'/><rect width='40' height='100' fill='%23046a38'/><circle cx='40' cy='50' r='15' fill='%23ffcc00'/><circle cx='40' cy='50' r='6' fill='none' stroke='%23da291c' stroke-width='2'/></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
