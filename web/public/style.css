@@ -129,7 +129,8 @@ body {
   gap: 14px;
   padding: 18px;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  max-width: 1500px;
+  max-width: 96vw;
+  width: 96vw;
   margin: 0 auto;
 }
 

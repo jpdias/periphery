@@ -1,7 +1,9 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
-import { IPMA_BASE, IPMA_SEISMIC_PATH, IPMA_SEISMIC_PATH_AZORES, SEISMIC_TTL, SEISMIC_MAX } from "./env.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal } from "./utils.js";
+import { IPMA_BASE, IPMA_SEISMIC_PATH, IPMA_SEISMIC_PATH_AZORES, USGS_BASE, SEISMIC_USGS_FEED, SEISMIC_TTL, SEISMIC_MAX } from "./env.js";
 
-// Recent seismic activity for Portugal from IPMA's open-data feeds.
+// Recent seismic activity. Inside Portugal we use IPMA's open-data feeds
+// (mainland + Madeira/Azores). Outside Portugal we fall back to the global
+// USGS GeoJSON feed so the widget works anywhere in the world.
 //   3.json — mainland (+ Madeira/Azores, depending on the day)
 //   7.json — Azores
 // Both are "last activity" lists, newest first. We merge them, dedupe by
@@ -18,6 +20,11 @@ export default async function handler(event) {
   const lat = Number(params.lat);
   const lon = Number(params.lon);
   if (!isFinite(lat) || !isFinite(lon)) return fail(400, "Invalid coordinates");
+
+  // Outside Portugal: use the global USGS feed instead of IPMA.
+  if (!isInPortugal(lat, lon)) {
+    return fallbackUSGS(lat, lon);
+  }
 
   const urls = [
     `${IPMA_BASE}${IPMA_SEISMIC_PATH}`,
@@ -71,4 +78,44 @@ function bodyLastActivity(results) {
     if (body && body.lastSismicActivityDate) return body.lastSismicActivityDate;
   }
   return null;
+}
+
+// Global fallback: the USGS all-day GeoJSON feed, shaped like the IPMA response
+// so the client can render either source unchanged.
+async function fallbackUSGS(lat, lon) {
+  const { status, body } = await upstreamJson(`${USGS_BASE}/${SEISMIC_USGS_FEED}`);
+  if (status !== 200 || !body) {
+    return fail(502, "Upstream USGS seismic request failed", { upstreamStatus: status });
+  }
+
+  const events = (body.features || [])
+    .map(f => {
+      const p = f.properties || {};
+      const [elon, elat, depth] = f.geometry?.coordinates || [];
+      if (p.mag == null || !isFinite(elat) || !isFinite(elon)) return null;
+      return {
+        mag: Number(p.mag),
+        depth_km: Math.round(Number(depth || 0) * 10) / 10,
+        region: p.place || "—",
+        time: p.time != null ? new Date(p.time).toISOString() : null,
+        lat: Number(elat),
+        lon: Number(elon),
+        distance_km: Math.round(haversineKm(lat, lon, elat, elon)),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0))
+    .slice(0, SEISMIC_MAX);
+
+  const felt = events.filter(e => e.mag >= 4.0);
+  const biggest = events.length ? Math.max(...events.map(e => e.mag)) : null;
+
+  return ok({
+    source: "USGS",
+    last_activity: events[0]?.time ?? null,
+    count: events.length,
+    max_mag: biggest,
+    felt_count: felt.length,
+    events,
+  }, { ttl: SEISMIC_TTL });
 }
