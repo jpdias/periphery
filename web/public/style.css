@@ -58,16 +58,15 @@ body {
   letter-spacing: 1.5px;
   font-family: var(--mono);
   color: var(--text);
-  text-transform: uppercase;
 }
 .brand .accent {
   color: var(--accent);
   text-shadow: 0 0 14px rgba(254, 92, 53, 0.7);
 }
 .brand::before {
-  content: "▮ ";
-  color: var(--accent2);
-  text-shadow: 0 0 8px rgba(57, 255, 136, 0.8);
+  content: "⬡ ";
+  color: var(--accent);
+  text-shadow: 0 0 8px rgba(254, 92, 53, 0.8);
 }
 
 .loc-chip {

@@ -31,7 +31,7 @@ void HttpFsm::tick() {
       if (_client.connect(_host.c_str(), _port)) {
         _client.print(String("GET ") + _url + " HTTP/1.0\r\n" +
                       "Host: " + _host + "\r\n" +
-                      "User-Agent: PTMonitor\r\n" +
+                      "User-Agent: periphery\r\n" +
                       "Connection: close\r\n\r\n");
         _phase = P_WAIT;
         _timer = millis();

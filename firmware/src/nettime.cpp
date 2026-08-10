@@ -119,7 +119,7 @@ static bool http_get(const char* host, const char* url, String &body) {
   if (!client.connect(host, 80)) return false;
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + host + "\r\n" +
-               "User-Agent: PTMonitor\r\n" +
+               "User-Agent: periphery\r\n" +
                "Connection: close\r\n\r\n");
   unsigned long t0 = millis();
   while (!client.available() && millis() - t0 < 5000) yield();
