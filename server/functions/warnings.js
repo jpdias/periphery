@@ -1,4 +1,4 @@
-import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
+import { handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal } from "./utils.js";
 import { IPMA_BASE, IPMA_WARNINGS_PATH, WARNINGS_TTL } from "./env.js";
 
 // Weather warnings (avisos) for Portugal from IPMA. The feed returns per-area
@@ -41,6 +41,19 @@ export default async function handler(event) {
   const lat = Number(params.lat);
   const lon = Number(params.lon);
   if (!isFinite(lat) || !isFinite(lon)) return fail(400, "Invalid coordinates");
+
+  // IPMA advisories only cover Portugal — return an explicit empty response
+  // outside the country so the widget can say so instead of guessing.
+  if (!isInPortugal(lat, lon)) {
+    return ok({
+      source: "IPMA",
+      outside_pt: true,
+      area: null,
+      max_level: "none",
+      count: 0,
+      alerts: [],
+    }, { ttl: WARNINGS_TTL });
+  }
 
   // Nearest district by centroid — this is the "current area".
   let areaCode = null, areaDist = Infinity;

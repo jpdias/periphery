@@ -26,6 +26,10 @@ let cfg = {
   clocksAll: true,
 };
 
+// Set true when the detected location is outside Portugal; disables the
+// Portugal-only widgets (trains, incidents, IPMA warnings).
+let outsidePT = false;
+
 function loadConfig() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -187,6 +191,8 @@ function applyWidgetVisibility() {
     const name = card.dataset.widget;
     let show = widgetVisible(name);
     if (clocksOff && /^clock(\d+)?$/.test(name)) show = false;
+    // Portugal-only widgets don't apply when the observer is outside the country.
+    if (outsidePT && ["trains", "incidents", "warnings"].includes(name)) show = false;
     // Small clocks also need a configured timezone to be useful.
     const m = /^clock(\d+)$/.exec(name);
     if (m) {
@@ -610,6 +616,12 @@ async function loadIncidents() {
     });
     const el = document.getElementById("incident-list");
     const countEl = document.getElementById("incident-count");
+    if (data.outside_pt) {
+      if (countEl) countEl.textContent = "0";
+      el.innerHTML = `<div class="empty">Fire incidents layer only covers Portugal</div>`;
+      stamp("incidents");
+      return;
+    }
     // Safety net: the upstream geofence can be trusted, but clamp anything that
     // slips through the radius so the card never shows out-of-range incidents.
     const radius = cfg.incidentRadius || 20;
@@ -1155,6 +1167,12 @@ async function loadWarnings() {
   const el = document.getElementById("warning-list");
   try {
     const { data } = await apiGet("warnings", { lat: cfg.lat, lon: cfg.lon });
+    if (data.outside_pt) {
+      document.getElementById("warnings-count").textContent = "";
+      el.innerHTML = `<div class="empty">IPMA advisories only cover Portugal</div>`;
+      stamp("warnings");
+      return;
+    }
     const alerts = data.alerts || [];
     document.getElementById("warnings-count").textContent =
       data.area ? `${data.area.name}${data.count ? " · " + data.count : ""}` : "";
@@ -1703,12 +1721,21 @@ function useMyLocation(close = true) {
 
 // ---- Boot ----------------------------------------------------------------
 
-function refreshAll() {
-  if (widgetVisible("weather")) loadWeather();
+// Ask /api/region whether the current coordinates are inside Portugal. Hides
+// the Portugal-only widgets (trains, incidents, warnings) when they aren't.
+async function detectRegion() {
+  try {
+    const { data } = await apiGet("region", { lat: cfg.lat, lon: cfg.lon });
+    outsidePT = data.in_pt === false;
+    applyWidgetVisibility();
+  } catch { /* keep previous state */ }
+}
+
+function refreshAll() {  if (widgetVisible("weather")) loadWeather();
   if (widgetVisible("forecast")) loadForecast();
-  if (widgetVisible("incidents")) loadIncidents();
-  if (widgetVisible("warnings")) loadWarnings();
-  if (widgetVisible("trains")) loadTrains();
+  if (widgetVisible("incidents") && !outsidePT) loadIncidents();
+  if (widgetVisible("warnings") && !outsidePT) loadWarnings();
+  if (widgetVisible("trains") && !outsidePT) loadTrains();
   if (widgetVisible("flights")) loadFlights();
   if (widgetVisible("solar")) loadSolar();
   if (widgetVisible("sunmoon")) loadMoon();
@@ -1876,6 +1903,7 @@ injectDragHandles();
 applyWidgetVisibility();
 updateSmallClocks();
 initCardDrag();
+detectRegion();
 refreshAll();
 setInterval(() => { refreshAll(); }, refreshIntervalMs());
 setInterval(tick, 1000);
@@ -1888,6 +1916,7 @@ if ("geolocation" in navigator) {
     cfg.locName = "you are here";
     saveConfig();
     updateLocChip();
+    detectRegion();
     refreshAll();
   }, () => { /* user denied or unavailable — keep defaults */ }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
 }

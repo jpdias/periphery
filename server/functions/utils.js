@@ -75,6 +75,9 @@ export async function upstreamJson(url, opts = {}) {
       body = null;
     }
     return { status: res.status, body };
+  } catch {
+    // Timeout abort (AbortError) or network failure — surface as upstream error.
+    return { status: 0, body: null };
   } finally {
     clearTimeout(timer);
   }
@@ -92,6 +95,8 @@ export async function upstreamText(url, opts = {}) {
     });
     const text = await res.text();
     return { status: res.status, body: text };
+  } catch {
+    return { status: 0, body: null };
   } finally {
     clearTimeout(timer);
   }
@@ -117,11 +122,35 @@ export function toQuery(params) {
 // Great-circle distance in km between two [lat, lon] pairs.
 export function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
-  const rad = Math.PI / 180;  const dLat = (lat2 - lat1) * rad;
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
   const a = Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// Bounding boxes covering Portugal (mainland + Madeira + Azores archipelagos).
+// Used to decide which Portugal-only widgets (trains, incidents, IPMA warnings,
+// IPMA forecast) apply to a given lat/lon, and which should fall back to
+// generic sources (Open-Meteo, MeteoAlarm, ...).
+const PT_BOXES = [
+  // mainland
+  { minLat: 36.95, maxLat: 42.15, minLon: -9.55, maxLon: -6.19 },
+  // Madeira (+ Porto Santo)
+  { minLat: 32.36, maxLat: 33.12, minLon: -17.30, maxLon: -16.24 },
+  // Azores — western (Flores, Corvo)
+  { minLat: 39.32, maxLat: 39.75, minLon: -31.34, maxLon: -31.00 },
+  // Azores — central (Faial, Pico, S. Jorge, Graciosa, Terceira)
+  { minLat: 38.30, maxLat: 39.10, minLon: -28.90, maxLon: -27.00 },
+  // Azores — eastern (S. Miguel, Santa Maria)
+  { minLat: 36.85, maxLat: 37.95, minLon: -25.90, maxLon: -25.00 },
+];
+
+export function isInPortugal(lat, lon) {
+  if (!isFinite(lat) || !isFinite(lon)) return false;
+  return PT_BOXES.some(b =>
+    lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon);
 }
 
 // Find the nearest entry among an array of {lat, lon} records.
