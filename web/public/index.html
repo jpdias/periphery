@@ -89,7 +89,7 @@
 
     <!-- Weather warnings (IPMA) -->
     <section class="card warnings-card" data-widget="warnings">
-      <h2 class="card-title" data-tip="IPMA weather warnings — wind, rain, snow and coastal risk in force">Avisos <span class="sub" id="warnings-count"></span><span class="upd" id="upd-warnings"></span></h2>
+      <h2 class="card-title" data-tip="IPMA weather warnings — wind, rain, snow and coastal risk in force">Weather Warnings <span class="sub" id="warnings-count"></span><span class="upd" id="upd-warnings"></span></h2>
       <ul class="warning-list" id="warning-list"></ul>
     </section>
 
@@ -107,7 +107,7 @@
 
     <!-- Radiation -->
     <section class="card radiation-card" data-widget="radiation">
-      <h2 class="card-title" data-tip="Ambient gamma radiation dose rate from the nearest Radares site">Radiation <span class="sub" id="rad-station"></span><span class="upd" id="upd-radiation"></span></h2>
+      <h2 class="card-title" data-tip="Ambient gamma radiation dose rate — nearest Radares site in Portugal, Safecast elsewhere">Radiation <span class="sub" id="rad-station"></span><span class="upd" id="upd-radiation"></span></h2>
       <div class="rad-main">
         <div class="rad-big" id="rad-value">—</div>
         <div class="rad-side">
@@ -123,7 +123,7 @@
 
     <!-- Air quality -->
     <section class="card air-card" data-widget="airquality">
-      <h2 class="card-title" data-tip="Particulate matter and gas concentrations from the nearest QualAr station">Air Quality <span class="sub" id="air-station"></span><span class="upd" id="upd-airquality"></span></h2>
+      <h2 class="card-title" data-tip="Air quality index and pollutant concentrations — QualAr in Portugal, US AQI elsewhere">Air Quality <span class="sub" id="air-station"></span><span class="upd" id="upd-airquality"></span></h2>
       <div class="air-main">
         <div class="air-big" id="air-value">—</div>
         <div class="air-side">
@@ -334,8 +334,8 @@
 
     <section class="side-group wsec" data-widget="warnings">
       <div class="wsec-head">
-        <span class="wsec-title">Avisos (IPMA)</span>
-        <input type="checkbox" class="w-toggle" data-widget="warnings" aria-label="Show Avisos">
+        <span class="wsec-title">Weather Warnings (IPMA)</span>
+        <input type="checkbox" class="w-toggle" data-widget="warnings" aria-label="Show Weather Warnings">
       </div>
       <p class="hint">Uses the nearest district to your location</p>
     </section>
@@ -382,6 +382,7 @@
         <span class="wsec-title">Radiation</span>
         <input type="checkbox" class="w-toggle" data-widget="radiation" aria-label="Show Radiation">
       </div>
+      <p class="hint">Ambient gamma dose rate — RADNET in Portugal, Safecast worldwide</p>
     </section>
 
     <section class="side-group wsec" data-widget="airquality">
@@ -389,6 +390,7 @@
         <span class="wsec-title">Air Quality</span>
         <input type="checkbox" class="w-toggle" data-widget="airquality" aria-label="Show Air Quality">
       </div>
+      <p class="hint">IQAR index in Portugal, US AQI worldwide (Open-Meteo)</p>
     </section>
 
     <section class="side-group wsec" data-widget="astro">
@@ -495,7 +497,7 @@
         <span class="wsec-title">National Grid (REN)</span>
         <input type="checkbox" class="w-toggle" data-widget="ren" aria-label="Show National Grid">
       </div>
-      <p class="hint">Live demand, renewable share and daily energy totals</p>
+      <p class="hint">Live demand, renewable share and daily energy totals — Portugal only</p>
     </section>
 
     <section class="side-group wsec" data-widget="seismic">
@@ -503,7 +505,7 @@
         <span class="wsec-title">Seismic (IPMA)</span>
         <input type="checkbox" class="w-toggle" data-widget="seismic" aria-label="Show Seismic">
       </div>
-      <p class="hint">Latest quakes for Portugal, distances from your location</p>
+      <p class="hint">Quakes near you — IPMA in Portugal, USGS worldwide</p>
       <div class="wcfg">
         <label>Quake search radius (km)
           <input type="number" step="1" id="cfg-quake-radius" value="1500">
@@ -516,7 +518,7 @@
         <span class="wsec-title">Fuel Prices</span>
         <input type="checkbox" class="w-toggle" data-widget="fuel" aria-label="Show Fuel Prices">
       </div>
-      <p class="hint">National average €/L from DGEG (API Aberta)</p>
+      <p class="hint">National average €/L from DGEG (API Aberta) — Portugal only</p>
     </section>
 
     <section class="side-group wsec" data-widget="fx">
@@ -532,7 +534,7 @@
         <span class="wsec-title">PSI (Lisbon index)</span>
         <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show PSI">
       </div>
-      <p class="hint">PSI-20 level & change (Yahoo Finance)</p>
+      <p class="hint">PSI-20 level & change (Yahoo Finance) — Portugal only</p>
     </section>
 
     <div class="btn-row sticky-save">

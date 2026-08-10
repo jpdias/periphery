@@ -15,6 +15,8 @@ export const ALLOWED_ORIGIN = env("ALLOWED_ORIGIN", "https://jpdias.me");
 // --- Weather / Forecast (open-meteo) ---
 export const OPEN_METEO_BASE = env("OPEN_METEO_BASE", "https://api.open-meteo.com");
 export const OPEN_METEO_PATH = env("OPEN_METEO_PATH", "/v1/forecast");
+export const OPEN_METEO_AQ_BASE = env("OPEN_METEO_AQ_BASE", "https://air-quality-api.open-meteo.com");
+export const OPEN_METEO_AQ_PATH = env("OPEN_METEO_AQ_PATH", "/v1/air-quality");
 export const WEATHER_TTL = Number(env("WEATHER_TTL", "600"));
 export const FORECAST_TTL = Number(env("FORECAST_TTL", "600"));
 export const FORECAST_DAYS = env("FORECAST_DAYS", "4");
@@ -65,6 +67,12 @@ export const QAR_POLUENTES = env("QAR_POLUENTES", "/QAR/MapServer/0");          
 export const RADNET_TTL = Number(env("RADNET_TTL", "600"));
 export const AIRQUALITY_TTL = Number(env("AIRQUALITY_TTL", "600"));
 export const RADNET_MAX = Number(env("RADNET_MAX", "60"));
+// Safecast: global crowd-sourced gamma radiation (fallback outside Portugal).
+export const SAFECAST_BASE = env("SAFECAST_BASE", "https://api.safecast.org");
+export const SAFECAST_PATH = env("SAFECAST_PATH", "/en-US/measurements.json");
+export const SAFECAST_RADIUS_KM = Number(env("SAFECAST_RADIUS_KM", "200"));
+export const SAFECAST_MAX = Number(env("SAFECAST_MAX", "50"));
+export const SAFECAST_TTL = Number(env("SAFECAST_TTL", "900"));
 
 // --- Earthquakes (USGS GeoJSON feeds) ---
 export const USGS_BASE = env("USGS_BASE", "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary");
@@ -97,11 +105,13 @@ export const REN_BASE = env("REN_BASE", "https://servicebus.ren.pt/datahubapi/el
 export const REN_TTL = Number(env("REN_TTL", "600"));
 export const REN_MAX = Number(env("REN_MAX", "96"));            // 15-min slots in the day
 
-// --- Seismic activity (IPMA) ---
+// --- Seismic activity (IPMA, Portugal) ---
 export const IPMA_SEISMIC_PATH = env("IPMA_SEISMIC_PATH", "/observation/seismic/3.json"); // mainland + islands
 export const IPMA_SEISMIC_PATH_AZORES = env("IPMA_SEISMIC_PATH_AZORES", "/observation/seismic/7.json");
 export const SEISMIC_TTL = Number(env("SEISMIC_TTL", "300"));
 export const SEISMIC_MAX = Number(env("SEISMIC_MAX", "10"));
+// USGS global feed used as the seismic fallback outside Portugal.
+export const SEISMIC_USGS_FEED = env("SEISMIC_USGS_FEED", "all_day.geojson");      // any magnitude, last 24h
 
 // --- Fuel prices (API Aberta — DGEG data, free, no key) ---
 export const APIABERTA_BASE = env("APIABERTA_BASE", "https://api.apiaberta.pt");

@@ -27,7 +27,8 @@ let cfg = {
 };
 
 // Set true when the detected location is outside Portugal; disables the
-// Portugal-only widgets (trains, incidents, IPMA warnings).
+// Portugal-only widgets (trains, incidents, IPMA warnings, fuel, national
+// grid, PSI index).
 let outsidePT = false;
 
 function loadConfig() {
@@ -62,14 +63,71 @@ function apiPath(widget) {
 
 async function apiGet(widget, params = {}) {
   const q = new URLSearchParams(params).toString();
+  const key = `${widget}?${q}`;
+  const ttl = API_TTL_MS[widget] ?? 60_000;
+
+  const cache = readApiCache();
+  const hit = cache[key];
+  if (hit && Date.now() - hit.ts < ttl) {
+    return hit.json;
+  }
+
   const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
   const res = await fetch(url);
   const json = await res.json();
   if (!res.ok || !json.ok) {
     throw new Error(json.error || `Request failed (${res.status})`);
   }
+
+  try {
+    cache[key] = { ts: Date.now(), json };
+    const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
+    const pruned = entries.slice(0, 80);
+    localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
+  } catch { /* storage full or unavailable — skip caching */ }
+
   return json;
 }
+
+const API_CACHE_KEY = "periphery-api-cache";
+
+function readApiCache() {
+  try { return JSON.parse(localStorage.getItem(API_CACHE_KEY)) || {}; } catch { return {}; }
+}
+
+function bustApiCache() {
+  try { localStorage.removeItem(API_CACHE_KEY); } catch { /* ignore */ }
+}
+
+// Client-side freshness window per widget. Slow-moving data (moon/sun, meteor
+// showers, weather warnings, fuel) is only re-fetched a few times a day so we
+// don't hammer the Netlify functions; live data (flights, lightning) refreshes
+// often. This complements the server-side Cache-Control TTLs.
+const API_TTL_MS = {
+  weather: 60 * 60_000,        // 1 h
+  forecast: 24 * 60 * 60_000,  // 1 day
+  incidents: 10 * 60_000,
+  trains: 15 * 60_000,
+  flights: 3 * 60_000,
+  solar: 6 * 60 * 60_000,     // 6 h — solar activity is slow-moving
+  moon: 24 * 60 * 60_000,      // sun/moon positions don't change in a day
+  radiation: 30 * 60_000,
+  airquality: 60 * 60_000,
+  astro: 24 * 60 * 60_000,     // meteor showers — once a day is plenty
+  uptime: 15 * 60_000,
+  lightning: 3 * 60_000,
+  warnings: 12 * 60 * 60_000,  // weather warnings — twice a day is enough
+  satellites: 30 * 60_000,
+  ren: 30 * 60_000,
+  seismic: 15 * 60_000,
+  fuel: 24 * 60 * 60_000,      // fuel prices — once a day
+  fx: 12 * 60 * 60_000,
+  psi: 60 * 60_000,            // 1 h
+  propagation: 12 * 60 * 60_000, // midday check is enough
+  region: 24 * 60 * 60_000,
+  ip: 12 * 60 * 60_000,
+  stations: 30 * 60_000,
+};
 
 // ---- Widget visibility ------------------------------------------------
 
@@ -83,7 +141,7 @@ const ALERT_STORE_KEY = "periphery-alerts";
 // "uv" reads the forecast's daily UV max; "solar" fires on M/X-class flares.
 const ALERTABLE = [
   ["incidents", "Incidents"],
-  ["warnings", "Avisos (IPMA)"],
+  ["warnings", "Weather Warnings (IPMA)"],
   ["airquality", "Bad air quality"],
   ["uv", "High UV index"],
   ["solar", "Solar flares"],
@@ -192,7 +250,7 @@ function applyWidgetVisibility() {
     let show = widgetVisible(name);
     if (clocksOff && /^clock(\d+)?$/.test(name)) show = false;
     // Portugal-only widgets don't apply when the observer is outside the country.
-    if (outsidePT && ["trains", "incidents", "warnings"].includes(name)) show = false;
+    if (outsidePT && ["trains", "incidents", "warnings", "fuel", "ren", "psi"].includes(name)) show = false;
     // Small clocks also need a configured timezone to be useful.
     const m = /^clock(\d+)$/.exec(name);
     if (m) {
@@ -871,10 +929,10 @@ async function loadFlights() {
       const alt = a.alt_baro ?? (a.alt_geom ?? "—");
       const spd = a.gs ?? "—";
       const call = a.flight || a.hex;
-      const { tag, cls } = classifyAc(a.category, a.dbFlags);
+      const { tag, cls, desc } = classifyAc(a.category, a.dbFlags);
       return `<li>
         <span class="callsign">${esc(call)}</span>
-        <span class="actag ${cls}">${tag}</span>
+        <span class="actag ${cls}" title="${desc}">${tag}</span>
         <span class="meta">${alt}ft · ${spd}kt</span>
       </li>`;
     }).join("");
@@ -887,23 +945,27 @@ async function loadFlights() {
 // Derive a short class tag from the ADS-B emitter category + military flag,
 // mirroring the firmware's flight.cpp classify().
 function classifyAc(cat, dbFlags) {
-  if (dbFlags & 1) return { tag: "MIL", cls: "mil" };
+  if (dbFlags & 1) return { tag: "MIL", cls: "mil", desc: "Military aircraft" };
   const a = (cat || "").charAt(0), b = (cat || "").charAt(1);
   if (a === "A") {
     switch (b) {
-      case "7": return { tag: "HEL", cls: "hel" };
-      case "3": case "4": case "5": return { tag: "COM", cls: "com" };
-      case "1": case "2": case "6": return { tag: "LGT", cls: "lgt" };
+      case "7": return { tag: "HEL", cls: "hel", desc: "Helicopter / rotorcraft" };
+      case "3": return { tag: "COM", cls: "com", desc: "Large commercial airliner" };
+      case "4": return { tag: "COM", cls: "com", desc: "High-vortex large airliner (A380-class)" };
+      case "5": return { tag: "COM", cls: "com", desc: "Heavy airliner" };
+      case "1": return { tag: "LGT", cls: "lgt", desc: "Light aircraft (single/twin piston)" };
+      case "2": return { tag: "LGT", cls: "lgt", desc: "Small aircraft (jet props)" };
+      case "6": return { tag: "LGT", cls: "lgt", desc: "High-performance aircraft" };
     }
   } else if (a === "B") {
     switch (b) {
-      case "1": return { tag: "GLI", cls: "gli" };
-      case "2": return { tag: "BAL", cls: "bal" };
-      case "4": return { tag: "ULT", cls: "ult" };
-      case "6": return { tag: "UAV", cls: "uav" };
+      case "1": return { tag: "GLI", cls: "gli", desc: "Glider / sailplane" };
+      case "2": return { tag: "BAL", cls: "bal", desc: "Lighter-than-air (balloon / airship)" };
+      case "4": return { tag: "ULT", cls: "ult", desc: "Ultralight / hang-glider" };
+      case "6": return { tag: "UAV", cls: "uav", desc: "Unmanned aerial vehicle (drone)" };
     }
   }
-  return { tag: "CIV", cls: "civ" };
+  return { tag: "CIV", cls: "civ", desc: "Civilian / unknown aircraft type" };
 }
 
 // ---- Radiation (APA RADNET) ---------------------------------------------
@@ -1499,7 +1561,7 @@ async function loadPsi() {
                        b.quality === "fair" ? "prop-fair" :
                        b.quality === "poor" ? "prop-poor" :
                        "prop-closed";
-         return `<li><span class="prop-band">${b.band}</span><span class="prop-value ${cls}">${b.quality}</span></li>`;
+         return `<li><span class="prop-band" title="${b.band} — ${b.freq} MHz">${b.band}</span><span class="prop-value ${cls}">${b.quality}</span></li>`;
        }).join("");
      }
  
@@ -1696,6 +1758,7 @@ function saveSettings() {
   if (allClocks) cfg.clocksAll = allClocks.checked;
   cfg.alerts = [...document.querySelectorAll(".a-toggle")].filter(cb => cb.checked).map(cb => cb.dataset.alert);
   saveConfig();
+  bustApiCache();
   renderClockCards();
   applyWidgetVisibility();
   updateSmallClocks();
@@ -1712,6 +1775,7 @@ function useMyLocation(close = true) {
     cfg.lon = +pos.coords.longitude.toFixed(5);
     cfg.locName = "you are here";
     saveConfig();
+    bustApiCache();
     updateLocChip();
     if (close) closeSettings();
     setStatus("location set", "ok");
@@ -1722,7 +1786,8 @@ function useMyLocation(close = true) {
 // ---- Boot ----------------------------------------------------------------
 
 // Ask /api/region whether the current coordinates are inside Portugal. Hides
-// the Portugal-only widgets (trains, incidents, warnings) when they aren't.
+// the Portugal-only widgets (trains, incidents, warnings, fuel, grid, PSI)
+// when they aren't.
 async function detectRegion() {
   try {
     const { data } = await apiGet("region", { lat: cfg.lat, lon: cfg.lon });
@@ -1746,11 +1811,11 @@ function refreshAll() {  if (widgetVisible("weather")) loadWeather();
 
   if (widgetVisible("lightning")) loadLightning();
   if (widgetVisible("satellites")) loadSatellites();
-  if (widgetVisible("ren")) loadRen();
+  if (widgetVisible("ren") && !outsidePT) loadRen();
   if (widgetVisible("seismic")) loadSeismic();
-  if (widgetVisible("fuel")) loadFuel();
+  if (widgetVisible("fuel") && !outsidePT) loadFuel();
   if (widgetVisible("fx")) loadFx();
-  if (widgetVisible("psi")) loadPsi();
+  if (widgetVisible("psi") && !outsidePT) loadPsi();
    if (widgetVisible("system")) loadSystem();
    if (widgetVisible("propagation")) loadPropagation();
 }
@@ -1915,6 +1980,7 @@ if ("geolocation" in navigator) {
     cfg.lon = +pos.coords.longitude.toFixed(5);
     cfg.locName = "you are here";
     saveConfig();
+    bustApiCache();
     updateLocChip();
     detectRegion();
     refreshAll();
