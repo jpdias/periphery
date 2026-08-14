@@ -24,7 +24,7 @@ bool HttpFsm::begin(const String &host, const String &url, uint16_t port,
     _secure = new BearSSL::WiFiClientSecure();
     if (!_secure) { _status = FAILED; return false; }
     _secure->setInsecure();
-    _secure->setBufferSizes(4096, 512);
+    _secure->setBufferSizes(2048, 512);
     _secure->setTimeout(3000);
     _client = _secure;
   }

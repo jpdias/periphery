@@ -4,6 +4,7 @@
 #include "env.h"
 #include "nettime.h"
 #include "netproxy.h"
+#include "bodyutil.h"
 #include "tlslock.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -12,7 +13,8 @@
 static const uint16_t INC_PORT = 443;
 static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is heap-heavy)
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
-static const uint32_t INC_MIN_HEAP = 8192;          // streaming parse: ~5-6KB contiguous is enough
+static const uint32_t INC_MIN_HEAP = 6144;          // TLS (2048+512) + ~1KB body
+                                                      // + small JsonDocument: 6KB is enough
 
 static IncidentData gData;
 static bool gUpdated = false;
@@ -67,6 +69,9 @@ static unsigned long timer = 0;
 static unsigned long lastCycle = 0;
 static unsigned long retryAt = 0;   // early retry time after a defer/fail
 static bool first = true;
+static String bodyBuf;              // response body drained across loop ticks
+static String hdrBuf;               // raw response headers (content-length scan)
+static long httpContentLen = -1;    // Content-Length from the response (-1 unknown)
 
 const IncidentData& incidents_data() { return gData; }
 
@@ -148,9 +153,10 @@ static int insert_sorted(Incident *arr, int n, const Incident &a) {
   return n;
 }
 
-// Parse straight from the TLS stream (with a filter) so we never buffer the
-// whole response. GeoJSON Point coordinates arrive as [lon, lat] (outSR=4326).
-static void parse(Stream &s) {
+// Parse the buffered body (framing already stripped by slice_json) with a
+// filter so the working doc stays tiny. GeoJSON Point coordinates arrive as
+// [lon, lat] (outSR=4326).
+static void parse(const String &json) {
   // ArduinoJson v6 filter for an array of objects: index [0] wildcards all
   // elements (createNestedObject() matches nothing on v6).
   JsonDocument filter;
@@ -166,7 +172,7 @@ static void parse(Stream &s) {
 
   JsonDocument doc;
   DeserializationError err =
-      deserializeJson(doc, s, DeserializationOption::Filter(filter));
+      deserializeJson(doc, json, DeserializationOption::Filter(filter));
   if (err) { mlog.printf("[INC] parse err %s\n", err.c_str()); gData.valid = false; return; }
 
   JsonArray features = doc["features"];
@@ -199,15 +205,25 @@ static void parse(Stream &s) {
 }
 
 // Non-blocking: consume HTTP response headers up to the blank line. Returns
-// true once the body is reached.
+// true once the body is reached and httpContentLen has been set from the
+// Content-Length header (if present).
 static uint8_t hdrMatch = 0;   // progress through "\r\n\r\n"; reset per fetch
 static bool skip_headers(Stream &s) {
   uint8_t &match = hdrMatch;
   while (s.available()) {
     char c = (char)s.read();
+    if (hdrMatch == 4) break;            // keep body bytes out of hdrBuf
+    if (hdrBuf.length() < 1024) hdrBuf += c;
     if ((match == 0 || match == 2) && c == '\r') match++;
-    else if ((match == 1 || match == 3) && c == '\n') { match++; if (match == 4) { match = 0; return true; } }
-    else match = 0;
+    else if ((match == 1 || match == 3) && c == '\n') {
+      match++;
+      if (match == 4) {
+        match = 0;
+        httpContentLen = header_content_length(hdrBuf);
+        hdrBuf = "";
+        return true;
+      }
+    } else match = 0;
   }
   return false;
 }
@@ -249,10 +265,14 @@ void incidents_tick() {
           return;   // another TLS session (moon/flight) busy; retry next loop
         }
         first = false;
+        hdrMatch = 0;   // a mid-header abort must not corrupt the next fetch
+        hdrBuf = "";
+        httpContentLen = -1;
+        bodyBuf = "";
         cli = new BearSSL::WiFiClientSecure();
         if (!cli) { fail("alloc fail"); return; }
         cli->setInsecure();
-        cli->setBufferSizes(4096, 512);   // smaller TLS buffers to fit heap
+        cli->setBufferSizes(2048, 512);   // smaller TLS buffers to fit heap
         cli->setTimeout(2000);
         phase = P_CONN;
         timer = millis();
@@ -266,8 +286,7 @@ void incidents_tick() {
         String req = String("GET ") + url + " HTTP/1.1\r\n" +
                      "Host: " + host + "\r\n" +
                      "User-Agent: periphery\r\n" +
-                     "X-Periphery-Raw: 1\r\n" +
-                     "Connection: close\r\n\r\n";
+                     "X-Periphery-Raw: 1\r\n\r\n";
         cli->print(req);
         phase = P_WAIT;
         timer = millis();
@@ -289,86 +308,54 @@ void incidents_tick() {
       break;
 
     case P_READ:
-      if (cli->available()) {
-        parse(*cli);              // streams from the client, stops at closing brace
+      // Drain the body across ticks into a String, completing when a balanced
+      // top-level JSON object has arrived (covers Content-Length and chunked
+      // keep-alive responses alike) or when the server closes the connection.
+      while (cli->available()) {
+        int ch = cli->read();
+        if (ch < 0) break;
+        if (bodyBuf.length() >= BODY_CAP) { bodyBuf = ""; httpContentLen = -1; fail("body too large"); break; }
+        bodyBuf += (char)ch;
+      }
+      bool done = body_is_complete(bodyBuf) ||
+                  (httpContentLen > 0 && (int)bodyBuf.length() >= httpContentLen) ||
+                  (!cli->connected() && !cli->available());
+      if (done) {
+        String json = slice_json(bodyBuf);
+        bodyBuf = "";
+        httpContentLen = -1;
+        parse(json);
+        bool ok = gData.valid;
         cleanup();
         phase = P_IDLE;
+        first = false;
         lastCycle = millis();
-        retryAt = 0;
-      } else if (!cli->connected()) {
-        fail("empty body");
-      } else if (millis() - timer > 8000) {
+        retryAt = ok ? 0 : (millis() + INC_RETRY);   // failed parse: retry sooner
+      } else if (millis() - timer > 12000) {
+        bodyBuf = "";
+        httpContentLen = -1;
         fail("read stall");
       }
       break;
   }
 }
 
-// Synchronous first fetch used at boot. Blocks until the full response is parsed
-// or timeoutMs elapses. At boot the flight radar has already released the TLS
-// lock, so this is the only TLS session and is guaranteed to succeed if the
-// network is up.
+// Synchronous first fetch used at boot. Drives the non-blocking incidents FSM
+// (which drains the body across loop iterations — the only pattern that is
+// immune to the BearSSL close race that drops a single-burst body). Blocks until
+// the first fetch completes (success or failure) or timeoutMs elapses.
 bool incidents_fetch_blocking(unsigned long timeoutMs) {
   if (WiFi.status() != WL_CONNECTED) { mlog.println("[INC] block: no wifi"); return false; }
   if (!cfg.api_base[0]) return false;   // proxy required
-  if (!tls_try_acquire()) { mlog.println("[INC] block: tls busy"); return false; }
 
-  BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
-  if (!c) { tls_release(); mlog.println("[INC] block: alloc fail"); return false; }
-  c->setInsecure();
-  c->setBufferSizes(4096, 512);
-  c->setTimeout(3000);
-
-  String host = String(proxy_host());
-  bool ok = false;
-  if (c->connect(host.c_str(), INC_PORT)) {
-    String url;
-    inc_request(host, url);
-    String req = String("GET ") + url + " HTTP/1.1\r\n" +
-                 "Host: " + host + "\r\n" +
-                 "User-Agent: periphery\r\n" +
-                 "X-Periphery-Raw: 1\r\n" +
-                 "Connection: close\r\n\r\n";
-    c->print(req);
-    // Wait for the body, then parse straight from the stream.
-    unsigned long t0 = millis();
-    while (millis() - t0 < timeoutMs) {
-      ESP.wdtFeed();
-      if (c->available()) break;
-      if (!c->connected()) { c->stop(); delete c; tls_release(); return false; }
-    }
-    // Skip headers up to the blank line.
-    uint8_t m = 0;
-    while (millis() - t0 < timeoutMs) {
-      ESP.wdtFeed();
-      while (c->available()) {
-        char ch = c->read();
-        if ((m == 0 || m == 2) && ch == '\r') m++;
-        else if ((m == 1 || m == 3) && ch == '\n') { m++; if (m == 4) goto body; }
-        else m = 0;
-      }
-      if (!c->connected() && !c->available()) break;
-    }
-body:
-    if (m == 4) {
-      parse(*c);   // streams from the client, stops at closing brace
-      ok = gData.valid;
-      if (!ok) {
-        gData.lastUpdated = time_utc_now();
-        gData.lastOk = false;
-      }
-    }
-    lastCycle = millis();
-    retryAt = 0;
-    first = false;
-  } else {
-    mlog.println("[INC] block: connect failed");
-    gData.lastUpdated = time_utc_now();
-    gData.lastOk = false;
+  incidents_tick();   // begin the fetch
+  unsigned long t0 = millis();
+  while (millis() - t0 < timeoutMs && !(first == false && phase == P_IDLE)) {
+    ESP.wdtFeed();
+    incidents_tick();
+    delay(50);
   }
-  c->stop(); delete c;
-  tls_release();
-  return ok;
+  return gData.valid;
 }
 
 int incidents_geofence_hit() {

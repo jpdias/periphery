@@ -183,7 +183,7 @@ bool moon_fetch_blocking(unsigned long timeoutMs) {
   BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
   if (!c) { tls_release(); mlog.println("[MOON] block: alloc fail"); return false; }
   c->setInsecure();
-  c->setBufferSizes(4096, 512);
+  c->setBufferSizes(2048, 512);
   c->setTimeout(3000);
 
   bool ok = false;
