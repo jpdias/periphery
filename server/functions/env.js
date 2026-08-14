@@ -148,9 +148,9 @@ export const FUEL_IDS = {
 // host is reachable from Netlify's cloud egress, so the widget works without a
 // proxy. The ArcGIS layer Atlas/Atlas_Agua/MapServer/9 gives per-dam
 // coordinates used to order basins by proximity to a location.
-// INFOAGUA_BASE defaults to APA's public portal (not a secret); ALBUF_GEOM_URL
-// is org-specific — REQUIRED, set as a Netlify env var, never committed.
-export const INFOAGUA_BASE = env("INFOAGUA_BASE", "https://infoagua.apambiente.pt");
+// INFOAGUA_BASE and ALBUF_GEOM_URL are org-specific — REQUIRED, set as Netlify
+// env vars, never committed.
+export const INFOAGUA_BASE = process.env.INFOAGUA_BASE; // required, no default
 export const INFOAGUA_PATH = env("INFOAGUA_PATH", "/pt/seca");
 export const ALBUF_GEOM_URL = process.env.ALBUF_GEOM_URL; // required, no default
 export const ALBUF_TTL = Number(env("ALBUF_TTL", "43200"));

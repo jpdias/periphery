@@ -97,6 +97,10 @@ export default async function handler(event) {
     return fail(400, "lat and lon must both be numeric");
   }
 
+  if (!INFOAGUA_BASE) {
+    return fail(500, "INFOAGUA_BASE env var is not set");
+  }
+
   const url = `${INFOAGUA_BASE}${INFOAGUA_PATH}`;
   const geomUrl = `${ALBUF_GEOM_URL}?${toQuery({
     where: "1=1",
