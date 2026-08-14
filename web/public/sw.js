@@ -1,4 +1,4 @@
-const CACHE = "periphery-v31";
+const CACHE = "periphery-v32";
 const ASSETS = ["./", "./index.html", "./style.css", "./config.js", "./app.js", "./manifest.json"];
 
 self.addEventListener("install", (e) => {
