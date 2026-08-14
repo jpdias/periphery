@@ -73,24 +73,34 @@ async function apiGet(widget, params = {}) {
     return hit.json;
   }
 
-  const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  if (!res.ok || !json.ok) {
-    throw new Error(json.error || `Request failed (${res.status})`);
-  }
-
+  pendingLoads++;
+  document.body.classList.add("syncing");
   try {
-    cache[key] = { ts: Date.now(), expires: Date.now() + ttl, json };
-    const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
-    const pruned = entries.slice(0, 80);
-    localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
-  } catch { /* storage full or unavailable — skip caching */ }
+    const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `Request failed (${res.status})`);
+    }
 
-  return json;
+    try {
+      cache[key] = { ts: Date.now(), expires: Date.now() + ttl, json };
+      const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
+      const pruned = entries.slice(0, 80);
+      localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
+    } catch { /* storage full or unavailable — skip caching */ }
+
+    return json;
+  } finally {
+    if (--pendingLoads <= 0) document.body.classList.remove("syncing");
+  }
 }
 
 const API_CACHE_KEY = "periphery-api-cache";
+
+// Number of widget requests still in flight; drives the "syncing" pulse on the
+// status dot so the user can see data is being fetched.
+let pendingLoads = 0;
 
 function readApiCache() {
   try { return JSON.parse(localStorage.getItem(API_CACHE_KEY)) || {}; } catch { return {}; }
