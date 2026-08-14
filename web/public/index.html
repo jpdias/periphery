@@ -197,6 +197,12 @@
       <ul class="fuel-list" id="fuel-list"></ul>
     </section>
 
+    <!-- Reservoir storage (Albufeiras) -->
+    <section class="card fuel-card" data-widget="albufeiras">
+      <h2 class="card-title" data-tip="Reservoir storage on Portuguese river basins (armazenamento nas albufeiras, SNIRH)">Reservoirs <span class="sub" id="albuf-sub"></span><span class="upd" id="upd-albuf"></span></h2>
+      <ul class="fuel-list" id="albuf-list"></ul>
+    </section>
+
     <!-- Forex -->
     <section class="card fx-card" data-widget="fx">
       <h2 class="card-title" data-tip="Foreign exchange rates against the Euro">FX <span class="sub" id="fx-sub"></span><span class="upd" id="upd-fx"></span></h2>
@@ -518,7 +524,15 @@
         <span class="wsec-title">Fuel Prices</span>
         <input type="checkbox" class="w-toggle" data-widget="fuel" aria-label="Show Fuel Prices">
       </div>
-      <p class="hint">National average €/L from DGEG (API Aberta) — Portugal only</p>
+      <p class="hint">National average €/L from DGEG (precoscombustiveis) — Portugal only</p>
+    </section>
+
+    <section class="side-group wsec" data-widget="albufeiras">
+      <div class="wsec-head">
+        <span class="wsec-title">Reservoir Storage</span>
+        <input type="checkbox" class="w-toggle" data-widget="albufeiras" aria-label="Show Reservoir Storage">
+      </div>
+      <p class="hint">% of capacity in the 3 closest river basins (SNIRH) — Portugal only</p>
     </section>
 
     <section class="side-group wsec" data-widget="fx">

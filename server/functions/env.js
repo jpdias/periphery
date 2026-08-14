@@ -15,7 +15,10 @@ export const ALLOWED_ORIGIN = env("ALLOWED_ORIGIN", "https://jpdias.me");
 // --- Weather / Forecast (open-meteo) ---
 export const OPEN_METEO_BASE = env("OPEN_METEO_BASE", "https://api.open-meteo.com");
 export const OPEN_METEO_PATH = env("OPEN_METEO_PATH", "/v1/forecast");
-export const OPEN_METEO_AQ_BASE = env("OPEN_METEO_AQ_BASE", "https://air-quality-api.open-meteo.com");
+export const OPEN_METEO_AQ_BASE = env(
+  "OPEN_METEO_AQ_BASE",
+  "https://air-quality-api.open-meteo.com",
+);
 export const OPEN_METEO_AQ_PATH = env("OPEN_METEO_AQ_PATH", "/v1/air-quality");
 export const WEATHER_TTL = Number(env("WEATHER_TTL", "600"));
 export const FORECAST_TTL = Number(env("FORECAST_TTL", "600"));
@@ -23,11 +26,11 @@ export const FORECAST_DAYS = env("FORECAST_DAYS", "4");
 
 // --- Moon / Sun (NASA JPL Horizons observer RTS ephemeris) ---
 export const HORIZONS_BASE = env("HORIZONS_BASE", "https://ssd.jpl.nasa.gov/api/horizons.api");
-export const HORIZONS_RTS_STEP = env("HORIZONS_RTS_STEP", "1m TVH");   // rise/transit/set, true visual horizon
+export const HORIZONS_RTS_STEP = env("HORIZONS_RTS_STEP", "1m TVH"); // rise/transit/set, true visual horizon
 export const MOON_TTL = Number(env("MOON_TTL", "86400"));
 
 // --- Incidents (ArcGIS FeatureServer) — org-specific, keep private ---
-export const ARC_GIS_URL = process.env.ARC_GIS_URL;              // required, no default
+export const ARC_GIS_URL = process.env.ARC_GIS_URL; // required, no default
 export const ARC_GIS_TOKEN = process.env.ARC_GIS_TOKEN || undefined;
 export const INCIDENT_RADIUS_M = Number(env("INCIDENT_RADIUS_M", "20000"));
 export const INCIDENT_MAX = Number(env("INCIDENT_MAX", "12"));
@@ -42,10 +45,14 @@ export const FLIGHT_DEFAULT_DIST = env("FLIGHT_DEFAULT_DIST", "25");
 // --- Trains (Infraestruturas de Portugal) ---
 export const TRAIN_HOST = env("TRAIN_HOST", "www.infraestruturasdeportugal.pt");
 export const TRAIN_PATH = env("TRAIN_PATH", "/negocios-e-servicos");
-export const TRAIN_SVC =
-  env("TRAIN_SVC", "INTERNACIONAL,%20ALFA,%20IC,%20IR,%20REGIONAL,%20URB%7CSUBUR,%20ESPECIAL,%20MERCADORIAS,%20SERVI%C3%87O");
-export const TRAIN_UA =
-  env("TRAIN_UA", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36");
+export const TRAIN_SVC = env(
+  "TRAIN_SVC",
+  "INTERNACIONAL,%20ALFA,%20IC,%20IR,%20REGIONAL,%20URB%7CSUBUR,%20ESPECIAL,%20MERCADORIAS,%20SERVI%C3%87O",
+);
+export const TRAIN_UA = env(
+  "TRAIN_UA",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+);
 export const TRAIN_TTL = Number(env("TRAIN_TTL", "300"));
 export const TRAIN_WINDOW_H = Number(env("TRAIN_WINDOW_H", "3"));
 
@@ -60,10 +67,13 @@ export const SWPC_BASE = env("SWPC_BASE", "https://services.swpc.noaa.gov");
 export const SOLAR_TTL = Number(env("SOLAR_TTL", "300"));
 
 // --- Radiation + air quality (APA, Portugal: RADNET / QualAr) ---
-export const APA_GEO_BASE = env("APA_GEO_BASE", "https://sniambgeoogc.apambiente.pt/getogc/rest/services/Visualizador");
-export const RADNET_SERVICE = env("RADNET_SERVICE", "/sirad/MapServer/1");       // gama dose rate in air
-export const QAR_SERVICE = env("QAR_SERVICE", "/QAR/MapServer/1");               // IQAR global per station
-export const QAR_POLUENTES = env("QAR_POLUENTES", "/QAR/MapServer/0");           // per-pollutant indices
+export const APA_GEO_BASE = env(
+  "APA_GEO_BASE",
+  "https://sniambgeoogc.apambiente.pt/getogc/rest/services/Visualizador",
+);
+export const RADNET_SERVICE = env("RADNET_SERVICE", "/sirad/MapServer/1"); // gama dose rate in air
+export const QAR_SERVICE = env("QAR_SERVICE", "/QAR/MapServer/1"); // IQAR global per station
+export const QAR_POLUENTES = env("QAR_POLUENTES", "/QAR/MapServer/0"); // per-pollutant indices
 export const RADNET_TTL = Number(env("RADNET_TTL", "600"));
 export const AIRQUALITY_TTL = Number(env("AIRQUALITY_TTL", "600"));
 export const RADNET_MAX = Number(env("RADNET_MAX", "60"));
@@ -75,8 +85,11 @@ export const SAFECAST_MAX = Number(env("SAFECAST_MAX", "50"));
 export const SAFECAST_TTL = Number(env("SAFECAST_TTL", "900"));
 
 // --- Earthquakes (USGS GeoJSON feeds) ---
-export const USGS_BASE = env("USGS_BASE", "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary");
-export const USGS_FEED = env("USGS_FEED", "2.5_day.geojson");                    // mag >= 2.5, last 24h
+export const USGS_BASE = env(
+  "USGS_BASE",
+  "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary",
+);
+export const USGS_FEED = env("USGS_FEED", "2.5_day.geojson"); // mag >= 2.5, last 24h
 export const EARTHQUAKE_TTL = Number(env("EARTHQUAKE_TTL", "300"));
 export const EARTHQUAKE_MAX = Number(env("EARTHQUAKE_MAX", "8"));
 
@@ -103,21 +116,55 @@ export const SAT_DEFAULTS = [
 // --- National grid (REN Data Hub) ---
 export const REN_BASE = env("REN_BASE", "https://servicebus.ren.pt/datahubapi/electricity");
 export const REN_TTL = Number(env("REN_TTL", "600"));
-export const REN_MAX = Number(env("REN_MAX", "96"));            // 15-min slots in the day
+export const REN_MAX = Number(env("REN_MAX", "96")); // 15-min slots in the day
 
 // --- Seismic activity (IPMA, Portugal) ---
 export const IPMA_SEISMIC_PATH = env("IPMA_SEISMIC_PATH", "/observation/seismic/3.json"); // mainland + islands
-export const IPMA_SEISMIC_PATH_AZORES = env("IPMA_SEISMIC_PATH_AZORES", "/observation/seismic/7.json");
+export const IPMA_SEISMIC_PATH_AZORES = env(
+  "IPMA_SEISMIC_PATH_AZORES",
+  "/observation/seismic/7.json",
+);
 export const SEISMIC_TTL = Number(env("SEISMIC_TTL", "300"));
 export const SEISMIC_MAX = Number(env("SEISMIC_MAX", "10"));
 // USGS global feed used as the seismic fallback outside Portugal.
-export const SEISMIC_USGS_FEED = env("SEISMIC_USGS_FEED", "all_day.geojson");      // any magnitude, last 24h
+export const SEISMIC_USGS_FEED = env("SEISMIC_USGS_FEED", "all_day.geojson"); // any magnitude, last 24h
 
-// --- Fuel prices (API Aberta — DGEG data, free, no key) ---
-export const APIABERTA_BASE = env("APIABERTA_BASE", "https://api.apiaberta.pt");
-export const FUEL_PATH = env("FUEL_PATH", "/v1/fuel/prices");
+// --- Fuel prices (DGEG official portal, free, no key) ---
+// Preço médio diário published on https://precoscombustiveis.dgeg.gov.pt.
+// The portal's own JS calls the /api/PrecoComb/PMD endpoint; returning avg,
+// min and max price per fuel type per day. Prices come back as strings like
+// "1,8854 €" (comma decimal separator), parsed in fuel.js.
+export const DGEG_BASE = env("DGEG_BASE", "https://precoscombustiveis.dgeg.gov.pt");
+export const FUEL_PATH = env("FUEL_PATH", "/api/PrecoComb/PMD");
 export const FUEL_TTL = Number(env("FUEL_TTL", "3600"));
-export const FUEL_MAX = Number(env("FUEL_MAX", "50"));
+// DGEG fuel type IDs for the fuels the widget actually shows.
+export const FUEL_IDS = {
+  gasoline_95: 3201, // Gasolina simples 95
+  gasoline_98: 3400, // Gasolina 98
+  diesel: 2101, // Gasóleo simples
+  diesel_plus: 2105, // Gasóleo especial
+  gpl_auto: 1120, // GPL Auto
+  gnc_kg: 1143, // GNC (gás natural comprimido) - €/kg
+};
+
+// --- Reservoir storage (SNIRH, Portugal — free, no key) ---
+// Boletim de armazenamento mensal nas albufeiras published on snirh.apambiente.pt.
+// The bulletin is an HTML table (one row per month, one column per river basin)
+// giving % of full capacity (NPA). It updates monthly; anohi is the start year
+// of the hydrologic year (Oct–Sep), so July 2026 lives under anohi=2025.
+// The ArcGIS layer Atlas/Atlas_Agua/MapServer/9 gives per-dam coordinates used
+// to order basins by proximity to a location.
+export const SNIRH_BASE = env("SNIRH_BASE", "https://snirh.apambiente.pt");
+export const ALBUF_PATH = env(
+  "ALBUF_PATH",
+  "/snirh/_dadossintese/albufeiras/tabelas/tabelageral.php",
+);
+export const ALBUF_GEOM_URL = env(
+  "ALBUF_GEOM_URL",
+  "https://sniambgeoogc.apambiente.pt/getogc/rest/services/Atlas/Atlas_Agua/MapServer/9/query",
+);
+export const ALBUF_TTL = Number(env("ALBUF_TTL", "43200"));
+export const ALBUF_MAX_YEARS = Number(env("ALBUF_MAX_YEARS", "1"));
 
 // --- Forex (Frankfurter, ECB reference rates, no key) ---
 export const FX_BASE = env("FX_BASE", "https://api.frankfurter.dev/v1");
