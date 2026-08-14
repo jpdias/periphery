@@ -4,35 +4,57 @@ import {
   ok,
   fail,
   upstreamJson,
+  upstreamText,
   cachedFetch,
   haversineKm,
   toQuery,
 } from "./utils.js";
-import { UPSTREAM_TIMEOUT_MS, SNIRH_BASE, ALBUF_PATH, ALBUF_GEOM_URL, ALBUF_TTL } from "./env.js";
+import {
+  UPSTREAM_TIMEOUT_MS,
+  INFOAGUA_BASE,
+  INFOAGUA_PATH,
+  ALBUF_GEOM_URL,
+  ALBUF_TTL,
+} from "./env.js";
 
-// Reservoir storage (albufeiras) in Portugal from the SNIRH monthly bulletin.
-// The bulletin is an HTML table: one header row with the 12 river basins, a
-// capacity row (hm³), and a block of 12 month rows (OUT..SET) per hydrologic
-// year. Each cell is the % of full capacity (NPA). anohi is the start year of
-// the water year (Oct–Sep), so data published in July 2026 lives under
-// anohi=2025. Values come back as "n/d" until published.
-const MONTHS = ["OUT", "NOV", "DEZ", "JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET"];
+// Reservoir storage (albufeiras) in Portugal from APA's InfoÁgua portal.
+// InfoÁgua serves the current storage snapshot server-rendered on its seca
+// page: a `DATA_VolumesMap` JSON object with one row per river basin (% of full
+// capacity NPA, monthly average %, historical monthly minimum) + a national
+// TOTAL row, and a `DATA_BasinVolumesEvolution` series of national totals.
+//
+// Unlike the legacy SNIRH bulletin (snirh.apambiente.pt — ASN/geo blocked for
+// cloud egress), infoagua.apambiente.pt is served from a separate host that
+// Netlify's cloud egress can fetch directly.
+const INFG_MONTHS = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 
-// Alias the per-dam "bacia" attribute to the bulletin's aggregate basin names.
-const BACIA_ALIAS = {
-  "AVE/LEÇA": "AVE",
-  AVE: "AVE",
+// Map the geometry layer's basin names (SNIRH-style) to InfoÁgua's basin rows.
+// Basins with no InfoÁgua row (MINHO/ÂNCORA) are skipped in the ranking.
+const GEOM_ALIAS = {
+  "ARADE": "Arade",
+  "AVE": "Ave",
+  "AVE/LEÇA": "Ave",
+  "CÁVADO/RIBEIRAS COSTEIRAS": "Cávado",
+  "DOURO": "Douro",
+  "GUADIANA": "Guadiana",
+  "LIMA": "Lima",
+  "MIRA": "Mira",
+  "MONDEGO": "Mondego",
+  "RIBEIRAS DO ALENTEJO": "Ribeiras do Alentejo",
+  "RIBEIRAS DO OESTE": "Ribeiras do Oeste",
+  "SADO": "Sado",
+  "TEJO": "Tejo",
+  "VOUGA/RIBEIRAS COSTEIRAS": "Vouga",
 };
 
-// SNIRH cells use dot decimals and space thousands separators: "81.0", "1 169.6".
-function num(s) {
-  return Number(s.replace(/\s+/g, "").replace(",", "."));
+// The geometry layer groups the Algarve under one bacia; InfoÁgua splits it by
+// lon: west of the frontier (~ -8.4) is Barlavento, east is Sotavento.
+function geomAlgarveLon(lon) {
+  return lon < -8.4 ? "Ribeiras do Barlavento" : "Ribeiras do Sotavento";
 }
 
-// SNIRH serves its HTML as iso-8859-1 without advertising a charset, so plain
-// res.text() mis-decodes accented basin names (CÁVADO -> C�VADO). Fetch the
-// bytes and decode as windows-1252 explicitly.
-async function fetchLatin1(url) {
+// InfoÁgua serves a standard UTF-8 HTML page; grab the embedded JSON snapshot.
+async function fetchInfoagua(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
@@ -41,57 +63,25 @@ async function fetchLatin1(url) {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
         "Cache-Control": "no-cache",
       },
     });
-    const buf = await res.arrayBuffer();
-    const text = new TextDecoder("windows-1252").decode(buf);
-    return { status: res.status, body: text };
+    const text = await res.text();
+    const m = text.match(/var DATA_VolumesMap = (\{[\s\S]*?\});/);
+    let snap;
+    try {
+      snap = m ? JSON.parse(m[1]) : null;
+    } catch {
+      snap = null;
+    }
+    return { status: res.status, snap };
   } catch {
-    return { status: 0, body: null };
+    return { status: 0, snap: null };
   } finally {
     clearTimeout(timer);
   }
-}
-
-// Strip the SNIRH table into { basins, capacity, years: { "2025/26": [row..] } }.
-function parseBulletin(html) {
-  const cells = (tr) => {
-    const out = [];
-    for (const m of tr.matchAll(/<td class="tbl_val2">([^<]*)<\/td>/g)) out.push(m[1].trim());
-    return out;
-  };
-
-  const header = html.match(/<td class="tbl_tit1">([^<]*)<\/td>/g) || [];
-  const basins = header.map((h) => h.replace(/<[^>]+>/g, "").trim());
-  if (basins.length !== 12) return null;
-
-  const capRow = html.match(/Capacidade Total[\s\S]*?<\/tr>/);
-  const capacity = capRow ? cells(capRow[0]) : [];
-  if (capacity.length !== 12 || capacity.some((c) => c === "" || c === "n/d")) return null;
-
-  // Groups rows by the hydrologic-year block they appear under.
-  const years = {};
-  let current = null;
-  for (const m of html.matchAll(/<td rowspan="12" class="tbl_tit2">(\d{4}\/\d{2})<br>/g)) {
-    current = m[1];
-    years[current] = years[current] || [];
-  }
-  if (!current) return null;
-
-  for (const row of html.matchAll(/<tr bgcolor="#E3EEF4">[\s\S]*?<\/tr>/g)) {
-    const tds = row[0].match(/<td class="tbl_val2">([^<]*)<\/td>/g);
-    if (!tds || tds.length !== 13) continue;
-    const [label, ...vals] = tds.map((t) => t.replace(/<[^>]+>/g, "").trim());
-    if (!MONTHS.includes(label) || vals.length !== basins.length) continue;
-    // append to the most recent year block seen before this row
-    if (!current) continue;
-    years[current].push({ month: label, vals });
-  }
-
-  return { basins, capacity: capacity.map(num), years };
 }
 
 export default async function handler(event) {
@@ -107,18 +97,7 @@ export default async function handler(event) {
     return fail(400, "lat and lon must both be numeric");
   }
 
-  // Hydrologic-year start year: Oct–Sep → July 2026 = start year 2025.
-  const now = new Date();
-  const anohi = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1;
-
-  const url = `${SNIRH_BASE}${ALBUF_PATH}?${toQuery({
-    percOUvolum: 1,
-    anohi,
-    mes: "",
-    bacia: "",
-    albuf: "",
-  })}`;
-
+  const url = `${INFOAGUA_BASE}${INFOAGUA_PATH}`;
   const geomUrl = `${ALBUF_GEOM_URL}?${toQuery({
     where: "1=1",
     outFields: "bacia,albufeira,longdd,latdd",
@@ -127,48 +106,51 @@ export default async function handler(event) {
     f: "pjson",
   })}`;
 
-  const { status, text, geom } = await cachedFetch(
+  const { status, snap, geom } = await cachedFetch(
     `albufeiras:${url}:${hasLatLon ? geomUrl : ""}`,
     ALBUF_TTL * 1000,
     async () => {
-      const [textRes, geomRes] = await Promise.all([
-        fetchLatin1(url),
+      const [pageRes, geomRes] = await Promise.all([
+        fetchInfoagua(url),
         hasLatLon ? upstreamJson(geomUrl) : Promise.resolve(null),
       ]);
-      return { status: textRes.status, text: textRes.body, geom: geomRes && geomRes.body };
+      return { status: pageRes.status, snap: pageRes.snap, geom: geomRes && geomRes.body };
     },
   );
-  if (status !== 200 || !text) {
-    return fail(502, "Upstream SNIRH bulletin request failed", { upstreamStatus: status });
+  if (status !== 200 || !snap) {
+    return fail(502, "Upstream InfoÁgua request failed", { upstreamStatus: status });
   }
 
-  const parsed = parseBulletin(text);
-  if (!parsed) return fail(502, "Failed to parse SNIRH bulletin table");
+  const block = snap.data && snap.data[0];
+  if (!block || !Array.isArray(block.rows) || !block.rows.length) {
+    return fail(502, "Failed to parse InfoÁgua storage snapshot");
+  }
 
-  const { basins, capacity, years } = parsed;
-  const yearKey = `${anohi}/${String(anohi + 1).slice(2)}`;
+  // National total row (id "total"), then the per-basin rows.
+  const totalRow = block.rows.find((r) => String(r.id).toLowerCase() === "total");
+  const rows = block.rows.filter((r) => String(r.id).toLowerCase() !== "total");
+  if (!totalRow || typeof totalRow.value !== "number" || !rows.length) {
+    return fail(502, "No storage values found in the InfoÁgua snapshot");
+  }
 
-  // Latest published month across the current water year (skip n/d rows).
-  const yearRows = (years[yearKey] || []).filter((r) => !r.vals.some((v) => v === "n/d"));
-  const latest = yearRows[yearRows.length - 1] || null;
-  if (!latest) return fail(502, "No published data found in the SNIRH bulletin");
+  // Snapshot date: "2026-08-10 00:00:00.000000" (Europe/Lisbon).
+  const dt = block.datetime && block.datetime.date;
+  const dateStr = typeof dt === "string" ? dt.split(" ")[0] : new Date().toISOString().slice(0, 10);
+  const [y, mo] = dateStr.split("-").map((v) => Number(v));
+  const latestMonth = INFG_MONTHS[(mo || 1) - 1];
+  const yearKey = `${(mo ?? 1) >= 10 ? y : y - 1}/${String((mo ?? 1) >= 10 ? y + 1 : y).slice(2)}`;
 
-  const prevIdx = MONTHS.indexOf(latest.month) - 1;
-  const prev = yearRows.find((r) => MONTHS.indexOf(r.month) === prevIdx) || null;
+  const basins = rows.map((r) => ({
+    name: r.bacia,
+    pct: typeof r.value === "number" ? r.value : null,
+    avg_pct: typeof r.average === "number" ? r.average : null,
+    min_historical: typeof r.min === "string" ? r.min : null,
+    capacity_hm3: null,
+    prev_pct: null,
+    delta: null,
+  }));
 
-  const rows = basins.map((name, i) => {
-    const pct = num(latest.vals[i]);
-    const pv = prev && prev.vals[i] !== "n/d" ? num(prev.vals[i]) : null;
-    return {
-      name,
-      pct,
-      capacity_hm3: capacity[i],
-      prev_pct: pv,
-      delta: pv === null ? null : +(pct - pv).toFixed(1),
-    };
-  });
-
-  let result = rows;
+  let result = basins;
   if (hasLatLon) {
     // Rank basins by the distance to their nearest dam; keep the n closest.
     const dams = (geom && Array.isArray(geom.features) ? geom.features : [])
@@ -183,12 +165,12 @@ export default async function handler(event) {
 
     const basinDams = {};
     for (const d of dams) {
-      const b = BACIA_ALIAS[d.bacia] || d.bacia;
-      if (!basins.includes(b)) continue;
+      const b = d.bacia === "RIB EIRAS DO ALGARVE" ? geomAlgarveLon(d.lon) : GEOM_ALIAS[d.bacia] || d.bacia;
+      if (!basins.some((r) => r.name === b)) continue;
       (basinDams[b] = basinDams[b] || []).push(d);
     }
 
-    const scored = rows.map((r) => {
+    const scored = result.map((r) => {
       const ds = basinDams[r.name] || [];
       const dist = ds.length
         ? Math.min(...ds.map((d) => haversineKm(lat, Number(params.lon), d.lat, d.lon)))
@@ -208,22 +190,17 @@ export default async function handler(event) {
     }
   }
 
-  const nationalAvg = +(rows.reduce((acc, r) => acc + r.pct, 0) / rows.length).toFixed(1);
-
-  const mi = MONTHS.indexOf(latest.month);
-  const monthYear = mi <= 2 ? anohi : anohi + 1; // OUT..DEZ -> start year, JAN..SET -> next CY
-  const month = mi <= 2 ? mi + 10 : mi - 2; // OUT->10, NOV->11, DEZ->12, JAN->1, SET->9
-  const date = `${monthYear}-${String(month).padStart(2, "0")}-01`;
+  const nationalAvg = totalRow.value;
 
   return ok(
     {
-      source: "SNIRH / APA (snirh.apambiente.pt)",
-      date,
+      source: "APA InfoÁgua (infoagua.apambiente.pt)",
+      date: dateStr,
       hydrologic_year: yearKey,
-      latest_month: latest.month,
+      latest_month: latestMonth,
       national_avg: nationalAvg,
       range:
-        result.length === 1 ? "nearest" : result.length < 12 ? `nearest ${result.length}` : "all",
+        result.length === 1 ? "nearest" : result.length < 15 ? `nearest ${result.length}` : "all",
       basins: result,
     },
     { ttl: ALBUF_TTL },

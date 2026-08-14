@@ -1493,7 +1493,7 @@ async function loadFuel() {
 
 // ---- Reservoir storage (SNIRH / Albufeiras) ------------------------------
 
-const ALBUF_ICONS = { "ARADE": "💧", "AVE": "💧", "CÁVADO/RIBEIRAS COSTEIRAS": "💧", "DOURO": "🌊", "GUADIANA": "🌊", "LIMA": "💧", "MIRA": "💧", "MONDEGO": "🌊", "RIBEIRAS DO ALGARVE": "💧", "RIBEIRAS DO OESTE": "💧", "SADO": "💧", "TEJO": "🌊" };
+const ALBUF_ICONS = { "Arade": "💧", "Ave": "💧", "Cávado": "💧", "Douro": "🌊", "Guadiana": "🌊", "Lima": "💧", "Mira": "💧", "Mondego": "🌊", "Ribeiras do Alentejo": "💧", "Ribeiras do Barlavento": "💧", "Ribeiras do Oeste": "💧", "Ribeiras do Sotavento": "💧", "Sado": "💧", "Tejo": "🌊", "Vouga": "💧" };
 
 async function loadAlbufeiras() {
   const el = document.getElementById("albuf-list");

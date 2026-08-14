@@ -83,6 +83,16 @@ Celestrak TLE feeds.
   encrypts its live quotes and Google Finance is scrape-only, so this uses
   Yahoo Finance's chart endpoint with a browser User-Agent.
 
+### Reservoir storage
+
+`albufeiras` reads the current storage snapshot (% of full capacity NPA) per
+Portuguese river basin from APA's **InfoÁgua** portal (`infoagua.apambiente.pt`,
+server-rendered on `/pt/seca`). InfoÁgua is used instead of the legacy SNIRH
+bulletin host (`snirh.apambiente.pt`), which geo/ASN-blocks Netlify's cloud
+egress — the InfoÁgua host is reachable directly. Nearest-basin ranking uses
+the `Atlas_Agua` ArcGIS layer (`ALBUF_GEOM_URL`) with an alias map between the
+layer's SNIRH-style basin names and InfoÁgua's.
+
 ## Environment variables
 
 All defaults live in `functions/env.js` (the analog of the firmware `env.h`).

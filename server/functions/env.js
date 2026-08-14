@@ -139,20 +139,19 @@ export const FUEL_IDS = {
   gnc_kg: 1143, // GNC (gás natural comprimido) - €/kg
 };
 
-// --- Reservoir storage (SNIRH, Portugal — free, no key) ---
-// Boletim de armazenamento mensal nas albufeiras. The bulletin is an HTML table
-// (one row per month, one column per river basin) giving % of full capacity
-// (NPA). It updates monthly; anohi is the start year of the hydrologic year
-// (Oct–Sep), so July 2026 lives under anohi=2025. The ArcGIS layer
-// Atlas/Atlas_Agua/MapServer/9 gives per-dam coordinates used to order basins
-// by proximity to a location.
-// SNIRH_BASE and ALBUF_GEOM_URL are org-specific — REQUIRED, set as Netlify env
-// vars, never committed.
-export const SNIRH_BASE = process.env.SNIRH_BASE; // required, no default
-export const ALBUF_PATH = env(
-  "ALBUF_PATH",
-  "/snirh/_dadossintese/albufeiras/tabelas/tabelageral.php",
-);
+// --- Reservoir storage (InfoÁgua / APA, Portugal — free, no key) ---
+// APA's InfoÁgua portal (infoagua.apambiente.pt) publishes the albufeiras
+// storage summary server-rendered on its /pt/seca page: a DATA_VolumesMap
+// snapshot (per-basin % of full capacity NPA + national total, monthly average
+// and historical monthly minimum) plus a DATA_BasinVolumesEvolution series.
+// Unlike the legacy SNIRH bulletin host (snirh.apambiente.pt), the InfoÁgua
+// host is reachable from Netlify's cloud egress, so the widget works without a
+// proxy. The ArcGIS layer Atlas/Atlas_Agua/MapServer/9 gives per-dam
+// coordinates used to order basins by proximity to a location.
+// INFOAGUA_BASE and ALBUF_GEOM_URL are org-specific — REQUIRED, set as Netlify
+// env vars, never committed.
+export const INFOAGUA_BASE = process.env.INFOAGUA_BASE; // required, no default
+export const INFOAGUA_PATH = env("INFOAGUA_PATH", "/pt/seca");
 export const ALBUF_GEOM_URL = process.env.ALBUF_GEOM_URL; // required, no default
 export const ALBUF_TTL = Number(env("ALBUF_TTL", "43200"));
 export const ALBUF_MAX_YEARS = Number(env("ALBUF_MAX_YEARS", "1"));
