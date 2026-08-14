@@ -1,6 +1,14 @@
 [build]
   functions = "functions"
 
+# Albufeiras runs as an Edge Function so the SNIRH fetch egresses from
+# Netlify's edge network (Deno) instead of the AWS Lambda behind the redirect.
+# Edge functions are evaluated before redirects, so /api/albufeiras is
+# intercepted here and the [[redirects]] catch-all handles the other /api/*.
+[[edge_functions]]
+  path = "/api/albufeiras"
+  function = "albufeiras"
+
 # The web frontend lives on GitHub Pages (jpdias.me/periphery); Netlify hosts
 # only the API functions. Rewrite API calls to the Netlify functions.
 [[redirects]]
