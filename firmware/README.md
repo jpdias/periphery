@@ -10,12 +10,13 @@ the config page; disabled screens are skipped.
 |---|--------|-------|
 | 1 | **Clock** | Large time + date, weather summary, WiFi bars, sync dot, and the closest flight on the bottom line |
 | 2 | **Incidents** | The 5 most recent incidents from the ANEPC/ArcGIS feed, nearest-first, with a **geofence popup** when one is within range (see below) |
-| 3 | **ESPHome** | Live values from the configured ESPHome sensors |
-| 4 | **Forecast** | 3-day weather forecast labeled by weekday |
-| 5 | **Weather Detail** | Extended current-conditions readout |
-| 6 | **Monitors** | HTTP reachability status for the configured hosts |
-| 7 | **Flight Radar** | Nearby aircraft on a range-ring radar (see below) |
-| 8 | **System** | Heap / fragmentation, WiFi RSSI, SSID, IP, MAC, CPU, flash, uptime |
+| 3 | **Trains** | Next departures from the configured IP station, with rolling cursor (see below) |
+| 4 | **ESPHome** | Live values from the configured ESPHome sensors |
+| 5 | **Forecast** | 3-day weather forecast labeled by weekday |
+| 6 | **Weather Detail** | Extended current-conditions readout |
+| 7 | **Monitors** | HTTP reachability status for the configured hosts |
+| 8 | **Flight Radar** | Nearby aircraft on a range-ring radar (see below) |
+| 9 | **System** | Heap / fragmentation, WiFi RSSI, SSID, IP, MAC, CPU, flash, uptime |
 
 Every screen shows a top bar with WiFi signal bars, a time-sync dot (green =
 synced, red = not), and a right-aligned screen counter (`idx/total`).
@@ -47,14 +48,32 @@ won't re-pop until a new one appears. The screen is enabled/disabled via the
 **Incidents** checkbox on the config page (disabling it also disables the
 popup/fetch).
 
+### Trains (rolling cursor)
+Next departures are fetched from the [Infraestruturas de Portugal](https://www.infraestruturasdeportugal.pt)
+timetable API through the Netlify proxy (`/api/trains`), gated on an IP station
+node ID being configured (`cfg.ip_station`, e.g. node `9402006` for Porto São
+Bento; the config page lets you search stations by name and stores the ID +
+display name). Every train is shown as departure time, destination, operator
+and delay (from the IP "Observacoes" field).
+
+The fetch is a **rolling cursor**: each request asks for a window starting one
+minute after the last departure already fetched, so a batch of trains is never
+requested twice — you only ever get the next `TRAIN_MAX` up ahead. To keep
+bodies small enough for the boot heap, the window starts at **15 minutes** and
+grows (doubling, up to 6h) only when a window can't fill `TRAIN_MAX` — few
+trains per request, incrementing over time on quiet stations. Refresh is
+smart-TTL'd: after a successful fetch it waits until the last shown departure
+has passed (clamped 1–30 min), so delays/cancellations are picked up quickly
+without polling.
+
 ### Flight Radar
 Nearby aircraft are fetched from the [adsb.fi](https://adsb.fi) open data API
-(TLS) every ~15s and drawn on a polar radar centered on your location: concentric
-range rings (outer = full range, inner = half), a North marker, and one dot per
-aircraft placed by bearing and distance, with a short line indicating heading.
-The bottom-right shows a countdown to the next refresh. The closest aircraft is
-highlighted in **yellow** and detailed in the footer (class tag, callsign,
-distance, altitude, and shown/total count).
+(TLS, via the Netlify proxy) every ~15s and drawn on a polar radar centered on
+your location: concentric range rings (outer = full range, inner = half), a
+North marker, and one dot per aircraft placed by bearing and distance, with a
+short line indicating heading. The bottom-right shows a countdown to the next
+refresh. The closest aircraft is highlighted in **yellow** and detailed in the
+footer (class tag, callsign, distance, altitude, and shown/total count).
 
 Each aircraft is classified from its ADS-B emitter category (plus the military
 flag) into a short tag, which is also color-coded on the radar:
@@ -180,8 +199,6 @@ pio run -t uploadfs  # flash LittleFS image (web pages in data/)
 The web pages (config/log) live in `data/` and are served from LittleFS, so run
 `uploadfs` at least once (and again whenever the HTML/CSS changes).
 
-On Windows/WSL, symlink `.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler errors.
-
 ## Code quality tools
 
 Two node-free checkers are wired up for the codebase.
@@ -238,23 +255,22 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 `pio run` / `pio run -t buildfs` and upload the `.pio/build/<env>/*.bin` files.
 
 ## Data sources
+All widget data now goes **through the Netlify proxy** configured in
+`cfg.api_base` (the only direct network talk left is NTP). The firmware sends
+`X-Periphery-Raw: 1` so the proxy returns the upstream body verbatim.
 - Time: NTP (TZ from config), periodic resync at the configured interval with a
   green/red sync dot on the clock screen
 - Weather: Open-Meteo (no API key) — current + 3-day forecast (labeled by weekday)
 - External IP: ipinfo.io
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
-- Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
-- Incidents: ANEPC Ocorrencias ArcGIS FeatureServer over TLS, 5 most recent by
+- Flights: adsb.fi open data API via proxy over TLS, ~15s refresh
+- Incidents: ANEPC Ocorrencias ArcGIS FeatureServer via proxy, 5 most recent by
   occurrence date, ~15 min refresh
-- Sun/moon: [sunrise-sunset.org v2](https://sunrise-sunset.org/api) over **plain
-  HTTP** (`api.sunrise-sunset.org`, no API key, no TLS — the endpoint explicitly
-  supports non-TLS for ESP8266). Returns sunrise/set, moonrise/set, moon phase name
-  + illumination in one call. Fetched **synchronously at boot** and then once per
-  local day via the non-blocking FSM. Plain HTTP makes it near-instant and means it
-  no longer needs a BearSSL/TLS session (so it doesn't contend with the flight
-  radar's TLS client). The API requests attribution — show a link to
-  sunrise-sunset.org where the data is displayed.
+- Sun/moon: NASA JPL Horizons ephemeris via proxy. Fetched **synchronously at
+  boot** and then once per local day via the non-blocking FSM. Data attribution:
+  show a link to the source where the data is displayed.
+- Trains: Infraestruturas de Portugal timetable via proxy, rolling-cursor fetch
 - Forecast: Open-Meteo, fetched at boot and then **twice a day** (midnight + noon, local).
 
 ## Notes
@@ -269,15 +285,20 @@ Instead of racing several non-blocking FSMs at startup, `setup()` runs a fixed,
 **blocking** boot sequence with a live on-screen step list (`periphery` → `Fetching
 data...` → one line per step, `+`=done / `!`=fail / `.`=working):
 1. **NTP sync** — wait for a real clock (date-based fetches are meaningless at epoch).
-2. **Weather** + **Forecast** + **External IP** — plain HTTP, no TLS contention.
-3. **Sun / Moon** — TLS to USNO; runs *alone* as the first TLS session.
-4. **Flight radar** — TLS to adsb.fi; runs only after moon released the lock.
-5. **Incidents** — TLS to ArcGIS; runs only after flight released the lock (when the screen is enabled).
-6. **Ready** — hand off to the main loop.
+2. **Weather** + **Forecast** + **External IP** — back-to-back through the Netlify
+   proxy in one locked cycle (netfsm holds the single TLS session). Forecast is
+   marked fresh, so it isn't refetched on the next weather cycle.
+3. **Sun / Moon** — via the proxy; first TLS use, so it runs alone.
+4. **Trains** — via the proxy; runs before the other TLS fetches so it gets the
+   freshest heap (its body needs the most contiguous memory). Its blocking fetch
+   keeps widening the adaptive window until it returns departures.
+5. **Flight radar** — runs only after trains released the lock.
+6. **Incidents** — runs only after flight released the lock (when the screen is enabled).
+7. **Ready** — hand off to the main loop.
 
-Each step either completes or times out (12s) before the next starts, so there's no
-overlap of the two TLS sessions and the radar/moon can never wedge as they used to.
-The forecast is then refreshed only **twice a day** (midnight + noon) instead of on
+Each step either completes or times out before the next starts, so there's no
+overlap of TLS sessions and the fetchers can never wedge as they used to. The
+forecast is then refreshed only **twice a day** (midnight + noon) instead of on
 every weather cycle.
 
 ## Troubleshooting (problems hit during development)
@@ -330,12 +351,13 @@ reboot. **Fix:** the save response sends `Connection: close`, flushes and stops 
 socket, then `ESP.restart()` after 200ms; `saved.html` shows a 10s JS countdown that
 redirects back to `/`.
 
-### Moon source: avoid HTTPS-only APIs
-The first plain-HTTP candidate (`sunrisesunset.io`) actually 301-redirects HTTP to
-HTTPS, so the ESP8266 `WiFiClient` (no redirect following) got the HTML redirect
-body and failed to parse. **Fix:** use `sunrise-sunset.org/v2`, whose docs explicitly
-support non-TLS requests for ESP8266 and returns the full sun+moon JSON over plain
-HTTP. (The original USNO source was BearSSL/TLS and slow — same reason to avoid it.)
+### Moon: keep the HTTPS-only source server-side
+Small-format sun+moon APIs over plain HTTP were tried first (`sunrisesunset.io`
+301-redirects HTTP to HTTPS, so delivery failed on the bare `WiFiClient`);
+USNO over BearSSL/TLS was slow. **Fix:** the sun/moon fetch moved behind the
+Netlify proxy — the server calls NASA JPL Horizons over HTTPS and the device
+gets the result through the normal proxied TLS session, so none of these
+constraints apply anymore.
 
 ### Moon fetched with the wrong (epoch) date at boot
 Before NTP sync, `time()` returns 1970, so the fetch used the wrong date.
@@ -347,8 +369,3 @@ Adafruit GFX text size is **sticky** — after drawing the temperature at
 `setTextSize(2)`, the sun/moon rows inherited size 2. **Fix:** always reset
 `setTextSize(1)` before the small rows. (Also: the built-in font is 7-bit ASCII
 only — no Unicode glyphs, so moon phase is drawn as a custom filled shape.)
-
-### WSL can't flash over serial
-The upload (`pio run -t upload` / `-t uploadfs`) must run from **Windows** — WSL
-can't drive the serial `/dev/ttyS*` ports. Building works fine in WSL. Also symlink
-`.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler path errors.
