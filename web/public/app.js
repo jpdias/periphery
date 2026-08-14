@@ -27,7 +27,8 @@ let cfg = {
 };
 
 // Set true when the detected location is outside Portugal; disables the
-// Portugal-only widgets (trains, incidents, IPMA warnings, fuel, national
+// Portugal-only widgets (trains, incidents, IPMA warnings, fuel, reservoirs,
+// national
 // grid, PSI index).
 let outsidePT = false;
 
@@ -72,24 +73,34 @@ async function apiGet(widget, params = {}) {
     return hit.json;
   }
 
-  const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  if (!res.ok || !json.ok) {
-    throw new Error(json.error || `Request failed (${res.status})`);
-  }
-
+  pendingLoads++;
+  document.body.classList.add("syncing");
   try {
-    cache[key] = { ts: Date.now(), expires: Date.now() + ttl, json };
-    const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
-    const pruned = entries.slice(0, 80);
-    localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
-  } catch { /* storage full or unavailable — skip caching */ }
+    const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || `Request failed (${res.status})`);
+    }
 
-  return json;
+    try {
+      cache[key] = { ts: Date.now(), expires: Date.now() + ttl, json };
+      const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
+      const pruned = entries.slice(0, 80);
+      localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
+    } catch { /* storage full or unavailable — skip caching */ }
+
+    return json;
+  } finally {
+    if (--pendingLoads <= 0) document.body.classList.remove("syncing");
+  }
 }
 
 const API_CACHE_KEY = "periphery-api-cache";
+
+// Number of widget requests still in flight; drives the "syncing" pulse on the
+// status dot so the user can see data is being fetched.
+let pendingLoads = 0;
 
 function readApiCache() {
   try { return JSON.parse(localStorage.getItem(API_CACHE_KEY)) || {}; } catch { return {}; }
@@ -136,6 +147,7 @@ const API_TTL_MS = {
   ren: 30 * 60_000,
   seismic: 15 * 60_000,
   fuel: 24 * 60 * 60_000,      // fuel prices — once a day
+  albufeiras: 24 * 60 * 60_000, // reservoir storage — monthly, once a day is plenty
   fx: 12 * 60 * 60_000,
   psi: 60 * 60_000,            // 1 h
   propagation: 12 * 60 * 60_000, // midday check is enough
@@ -265,7 +277,7 @@ function applyWidgetVisibility() {
     let show = widgetVisible(name);
     if (clocksOff && /^clock(\d+)?$/.test(name)) show = false;
     // Portugal-only widgets don't apply when the observer is outside the country.
-    if (outsidePT && ["trains", "incidents", "warnings", "fuel", "ren", "psi"].includes(name)) show = false;
+    if (outsidePT && ["trains", "incidents", "warnings", "fuel", "albufeiras", "ren", "psi"].includes(name)) show = false;
     // Small clocks also need a configured timezone to be useful.
     const m = /^clock(\d+)$/.exec(name);
     if (m) {
@@ -1479,6 +1491,41 @@ async function loadFuel() {
   }
 }
 
+// ---- Reservoir storage (SNIRH / Albufeiras) ------------------------------
+
+const ALBUF_ICONS = { "ARADE": "💧", "AVE": "💧", "CÁVADO/RIBEIRAS COSTEIRAS": "💧", "DOURO": "🌊", "GUADIANA": "🌊", "LIMA": "💧", "MIRA": "💧", "MONDEGO": "🌊", "RIBEIRAS DO ALGARVE": "💧", "RIBEIRAS DO OESTE": "💧", "SADO": "💧", "TEJO": "🌊" };
+
+async function loadAlbufeiras() {
+  const el = document.getElementById("albuf-list");
+  if (!el) return;
+  try {
+    const params = { n: 3, lat: cfg.lat, lon: cfg.lon };
+    const { data } = await apiGet("albufeiras", params);
+    document.getElementById("albuf-sub").textContent =
+      `${data.latest_month || ""} ${(data.date || "").slice(0, 4)} · ${data.national_avg?.toFixed(1) ?? "–"}%`;
+    const basins = data.basins || [];
+    if (!basins.length) {
+      el.innerHTML = `<div class="empty">Reservoir data unavailable</div>`;
+      stamp("albufeiras");
+      return;
+    }
+    el.innerHTML = basins.map(b => {
+      const cls = b.delta != null && b.delta > 0 ? "up" : b.delta != null && b.delta < 0 ? "down" : "";
+      const delta = b.delta == null ? "" : `${b.delta > 0 ? "+" : ""}${b.delta.toFixed(1)}%`;
+      return `
+      <li>
+        <span class="fuel-ic">${ALBUF_ICONS[b.name] || "💧"}</span>
+        <span class="fuel-name" title="${esc(b.name)}">${b.distance_km != null ? `${esc(b.name)} · ${b.distance_km}km` : esc(b.name)}</span>
+        <span class="fuel-price">${b.pct != null ? b.pct.toFixed(1) + "%" : "–"}</span>
+        <span class="fuel-meta ${cls}">${delta}</span>
+      </li>`;
+    }).join("");
+    stamp("albufeiras");
+  } catch (e) {
+    el.innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
 // ---- FX (ECB / Frankfurter) ----------------------------------------------
 
 async function loadFx() {
@@ -1864,6 +1911,7 @@ function refreshAll() {  if (widgetVisible("weather")) loadWeather();
   if (widgetVisible("ren") && !outsidePT) loadRen();
   if (widgetVisible("seismic")) loadSeismic();
   if (widgetVisible("fuel") && !outsidePT) loadFuel();
+  if (widgetVisible("albufeiras") && !outsidePT) loadAlbufeiras();
   if (widgetVisible("fx")) loadFx();
   if (widgetVisible("psi") && !outsidePT) loadPsi();
    if (widgetVisible("system")) loadSystem();

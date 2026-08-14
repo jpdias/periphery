@@ -108,6 +108,13 @@ body {
 }
 .status.ok .dot { background: var(--ok); box-shadow: 0 0 10px rgba(57, 255, 136, 0.9); }
 .status.err .dot { background: var(--danger); box-shadow: 0 0 10px rgba(255, 59, 92, 0.9); animation: blink 1s infinite; }
+/* pulse the status dot while widget data is being fetched */
+body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba(254, 92, 53, 0.8); animation: sync-pulse 0.9s ease-in-out infinite; }
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
 
 .icon-btn {
   background: transparent;
@@ -192,6 +199,9 @@ body {
   align-items: baseline;
   gap: 8px;
   font-family: var(--mono);
+  /* leave room for the drag grip (18px at top-right) so it doesn't cover the
+     timestamp on the right edge */
+  padding-right: 24px;
 }
 .card-title .sub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px; }
 .card-title .upd {
