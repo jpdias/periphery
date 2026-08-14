@@ -118,7 +118,7 @@ export default async function handler(event) {
     },
   );
   if (status !== 200 || !snap) {
-    return fail(502, "Upstream InfoÁgua request failed", { upstreamStatus: status });
+    return fail(502, `Upstream InfoÁgua request failed (${url})`, { upstreamStatus: status });
   }
 
   const block = snap.data && snap.data[0];
