@@ -5,6 +5,7 @@
 #include "nettime.h"
 #include "netproxy.h"
 #include "tlslock.h"
+#include "netsched.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -56,6 +57,15 @@ int trains_next_refresh_secs() {
   return (int)((gNextIn - elapsed + 999) / 1000);
 }
 
+bool trains_due() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!cfg.api_base[0]) return false;   // proxy required
+  if (!cfg.ip_station[0]) return false; // no station configured
+  if (phase != P_IDLE) return false;
+  return first || millis() - lastCycle >= gNextIn ||
+         (retryAt > 0 && millis() >= retryAt);
+}
+
 void trains_begin() {
   phase = P_IDLE;
   step = S_REQ;
@@ -79,6 +89,7 @@ static void fail(const char *why) {
   gData.lastUpdated = time_utc_now();
   gData.lastOk = false;
   cleanup();
+  netsched_done(NS_TRAINS);
   phase = P_IDLE;
   step = S_REQ;
   first = false;
@@ -282,7 +293,8 @@ static void parse_timetable(Stream &s) {
   mlog.printf("[TRN] %d departures\n", n);
 }
 
-// Start a fetch: acquire TLS, open a client, and send the single GET request.
+// Start a fetch: claim our cascade turn, acquire TLS, open a client, and send
+// the single GET request.
 static void start_fetch() {
   if (ESP.getMaxFreeBlockSize() < TRAIN_MIN_HEAP) {
     mlog.println("[TRN] low heap, deferring 30s");
@@ -291,11 +303,8 @@ static void start_fetch() {
     retryAt = millis() + TRAIN_RETRY;
     return;
   }
-  if (!tls_try_acquire()) {
-    static unsigned long lastWarn = 0;
-    if (millis() - lastWarn > 5000) { mlog.println("[TRN] TLS busy, waiting"); lastWarn = millis(); }
-    return;
-  }
+  if (!netsched_can_start(NS_TRAINS)) return;   // not our turn in the cascade
+  if (!tls_try_acquire()) { netsched_done(NS_TRAINS); return; }  // safety; cascade prevents overlap
   first = false;
   cli = new BearSSL::WiFiClientSecure();
   if (!cli) { fail("alloc fail"); return; }
@@ -352,6 +361,7 @@ void trains_tick() {
           ChunkedStream cs(*cli);
           parse_timetable(cs);
           cleanup();            // free TLS buffers (now empty/streamed)
+          netsched_done(NS_TRAINS);
           phase = P_IDLE;
           step = S_REQ;
           lastCycle = millis();

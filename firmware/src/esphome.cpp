@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "esphome.h"
 #include "httpfsm.h"
+#include "netsched.h"
 #include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
 
@@ -21,6 +22,12 @@ static const unsigned long EH_INTERVAL = 30000;  // full refresh every 30s
 const EspHomeState& esphome_state(int i) { return gSensors[i]; }
 int esphome_count() { return ehCount; }
 bool esphome_updated() { bool c = ehChanged; ehChanged = false; return c; }
+
+bool esphome_due() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (cfg.esphome_host[0] == 0 || ehCount == 0) return false;
+  return !ehActive && (ehFirst || millis() - ehLast >= EH_INTERVAL);
+}
 
 // Parse "slug=label,slug2=label2" from config into ehSlug/ehLabel.
 static void parse_sensor_config() {
@@ -116,6 +123,7 @@ static void advance() {
     ehIdx = 0;
     ehLast = millis();
     ehActive = false;
+    netsched_done(NS_ESPHOME);
   } else {
     start_sensor();
   }
@@ -127,6 +135,7 @@ void esphome_tick() {
 
   if (!ehActive) {
     if (ehFirst || millis() - ehLast >= EH_INTERVAL) {
+      if (!netsched_can_start(NS_ESPHOME)) return;   // not our turn in the cascade
       ehFirst = false;
       ehActive = true;
       ehIdx = 0;

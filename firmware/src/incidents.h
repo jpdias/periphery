@@ -36,6 +36,7 @@ struct IncidentData {
 void incidents_begin();
 void incidents_tick();
 bool incidents_updated();          // true once after a refresh
+bool incidents_due();              // true when idle and a refresh is due (cascade gate)
 const IncidentData& incidents_data();
 int incidents_next_refresh_secs(); // seconds until next fetch (0 = fetching now)
 

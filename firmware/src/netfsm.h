@@ -8,6 +8,7 @@ void netfsm_begin(unsigned long intervalMs);
 void netfsm_tick();
 bool netfsm_updated();          // true once after a full cycle completes
 bool netfsm_first_done();       // true after the first full boot cycle completes
+bool netfsm_due();              // true when idle and a new cycle is due (cascade gate)
 
 Weather& net_weather();
 Forecast& net_forecast();

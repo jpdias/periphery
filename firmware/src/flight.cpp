@@ -4,6 +4,7 @@
 #include "env.h"
 #include "netproxy.h"
 #include "tlslock.h"
+#include "netsched.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -39,6 +40,13 @@ int flight_next_refresh_secs() {
   return (int)((FL_INTERVAL - elapsed + 999) / 1000);
 }
 
+bool flight_due() {
+  if (cfg.flight_range <= 0) return false;
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!cfg.api_base[0]) return false;   // proxy required
+  return phase == P_IDLE && (first || millis() - lastCycle >= FL_INTERVAL);
+}
+
 void flight_begin() {
   phase = P_IDLE;
   first = true;
@@ -55,6 +63,7 @@ static void cleanup() {
 static void fail(const char *why) {
   mlog.printf("[FLT] %s\n", why);
   cleanup();
+  netsched_done(NS_FLIGHT);
   phase = P_IDLE;
   lastCycle = millis();
 }
@@ -186,11 +195,8 @@ void flight_tick() {
           lastCycle = millis();
           return;
         }
-        if (!tls_try_acquire()) {
-          static unsigned long lastWarn = 0;
-          if (millis() - lastWarn > 5000) { mlog.println("[FLT] TLS busy, waiting"); lastWarn = millis(); }
-          return;   // moon fetch busy; retry next loop
-        }
+        if (!netsched_can_start(NS_FLIGHT)) return;   // not our turn in the cascade
+        if (!tls_try_acquire()) { netsched_done(NS_FLIGHT); return; }  // safety; cascade prevents overlap
         first = false;
         cli = new BearSSL::WiFiClientSecure();
         if (!cli) { fail("alloc fail"); return; }
@@ -236,6 +242,7 @@ void flight_tick() {
       if (cli->available()) {
         parse(*cli);              // streams from the client, stops at closing brace
         cleanup();
+        netsched_done(NS_FLIGHT);
         phase = P_IDLE;
         lastCycle = millis();
       } else if (!cli->connected()) {

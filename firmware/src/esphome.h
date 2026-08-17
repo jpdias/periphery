@@ -14,6 +14,7 @@ struct EspHomeState {
 void esphome_begin();
 void esphome_tick();
 bool esphome_updated();          // true once after a sensor value changes
+bool esphome_due();              // true when idle and a refresh batch is due (cascade gate)
 const EspHomeState& esphome_state(int i);
 int esphome_count();
 

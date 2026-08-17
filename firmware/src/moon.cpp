@@ -4,6 +4,7 @@
 #include "nettime.h"
 #include "netproxy.h"
 #include "tlslock.h"
+#include "netsched.h"
 #include "httpfsm.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -43,6 +44,7 @@ static void fail(const char* why) {
   mlog.printf("[MOON] fail: %s\n", why);
   http.consume();
   tls_release();
+  netsched_done(NS_MOON);
   phase = M_IDLE;
   lastAttempt = millis();
 }
@@ -107,6 +109,21 @@ static String build_url(int yr, int mon, int day) {
   return proxy_path("moon", q);
 }
 
+// Full "should we fetch today" predicate, shared by moon_tick() and moon_due()
+// so the scheduler's parking and the FSM's start gate can never disagree.
+static bool due() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!time_is_synced()) return false;
+  if (!cfg.api_base[0]) return false;
+  time_t now = time(nullptr);
+  const struct tm *lt = localtime(&now);
+  if (lt->tm_yday == gFetchedYday) return false;                   // already have today
+  if (lastAttempt && millis() - lastAttempt < 10000) return false; // retry backoff
+  return true;
+}
+
+bool moon_due() { return due(); }
+
 void moon_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (!time_is_synced()) return;
@@ -114,13 +131,9 @@ void moon_tick() {
 
   switch (phase) {
     case M_IDLE: {
-      // Day-of-year key so we fetch exactly once per local calendar day.
-      time_t now = time(nullptr);
-      const struct tm *lt = localtime(&now);
-      int yday = lt->tm_yday;
-      if (yday == gFetchedYday) return;                 // already have today
-      if (lastAttempt && millis() - lastAttempt < 10000) return;  // retry backoff
-      if (!tls_try_acquire()) return;                   // another TLS session busy
+      if (!due()) return;
+      if (!netsched_can_start(NS_MOON)) return;   // wait for our cascade turn
+      if (!tls_try_acquire()) { netsched_done(NS_MOON); return; }  // safety; cascade prevents overlap
       int h, m, s, dow, day, mon, yr;
       time_now(h, m, s, dow, day, mon, yr);
       gFetchYr = yr; gFetchMon = mon; gFetchDay = day;
@@ -128,6 +141,7 @@ void moon_tick() {
       mlog.printf("[MOON] GET %s\n", url.c_str());
       if (!http.begin(proxy_host(), url, 443, true, "X-Periphery-Raw: 1")) {
         tls_release();
+        netsched_done(NS_MOON);
         lastAttempt = millis();
         return;
       }
@@ -143,6 +157,7 @@ void moon_tick() {
         String raw = http.body();
         http.consume();
         tls_release();
+        netsched_done(NS_MOON);
         mlog.printf("[MOON] body len=%d\n", raw.length());
         if (parse_moon_body(raw, gMoon)) {
           // Mark today fetched using the date we actually requested.
@@ -160,6 +175,7 @@ void moon_tick() {
       } else if (http.failed()) {
         http.consume();
         tls_release();
+        netsched_done(NS_MOON);
         lastAttempt = millis();
         phase = M_IDLE;
       }

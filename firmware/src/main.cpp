@@ -12,6 +12,7 @@
 #include "moon.h"
 #include "trains.h"
 #include "control.h"
+#include "netsched.h"
 
 #define BTN_PIN D3
 #define BL_PIN  D8            // backlight transistor gate/base (GPIO15; see README)
@@ -201,6 +202,7 @@ void setup() {
    incidents_begin();
    trains_begin();
    moon_begin();
+   netsched_begin();   // cascade scheduler: one fetcher may run at a time
 
    // Land on the first enabled screen (fall back to Clock if none enabled).
    screenIndex = 0;
@@ -350,6 +352,7 @@ void loop() {
   incidents_tick();
   trains_tick();
   moon_tick();     // fetches sun/moon data once per local day (heap-guarded)
+  netsched_advance();   // pass the network turn to the next due fetcher
 
   // --- Button: short press cycles screens, long press toggles the display ---
   // The ISR flags a falling edge; we then poll the pin to measure hold time.

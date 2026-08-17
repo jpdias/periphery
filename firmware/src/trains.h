@@ -31,6 +31,7 @@ struct TrainData {
 void trains_begin();
 void trains_tick();
 bool trains_updated();          // true once after a refresh
+bool trains_due();              // true when idle and a new timetable is due (cascade gate)
 const TrainData& trains_data();
 int trains_next_refresh_secs(); // seconds until next fetch (0 = fetching now)
 

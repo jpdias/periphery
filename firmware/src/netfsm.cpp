@@ -4,6 +4,7 @@
 #include "httpfsm.h"
 #include "netproxy.h"
 #include "tlslock.h"
+#include "netsched.h"
 #include <ESP8266WiFi.h>
 
 enum NetTask { TASK_WEATHER, TASK_FORECAST, TASK_EXTIP };
@@ -57,6 +58,12 @@ bool netfsm_updated() {
 
 bool netfsm_first_done() { return gFirstDone; }
 
+bool netfsm_due() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (!cfg.api_base[0]) return false;   // proxy required
+  return !netActive && (netFirst || millis() - netLastCycle >= netInterval);
+}
+
 void netfsm_begin(unsigned long intervalMs) {
   netInterval = intervalMs;
   netLastCycle = 0;
@@ -89,6 +96,7 @@ static void start_task(NetTask t) {
     tls_release();
     netHoldsLock = false;
     netActive = false;
+    netsched_done(NS_NET);
   }
 }
 
@@ -118,6 +126,7 @@ static void next_task() {
     netActive = false;
     tls_release();
     netHoldsLock = false;
+    netsched_done(NS_NET);
     mlog.println("[NET] cycle complete");
   }
 }
@@ -128,7 +137,8 @@ void netfsm_tick() {
 
   if (!netActive) {
     if (netFirst || millis() - netLastCycle >= netInterval) {
-      if (!tls_try_acquire()) return;   // another TLS session busy; retry next loop
+      if (!netsched_can_start(NS_NET)) return;   // not our turn in the cascade
+      if (!tls_try_acquire()) { netsched_done(NS_NET); return; }  // safety; cascade prevents overlap
       netHoldsLock = true;
       netFirst = false;
       netActive = true;

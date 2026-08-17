@@ -23,6 +23,7 @@ struct FlightData {
 void flight_begin();
 void flight_tick();
 bool flight_updated();        // true once after a refresh
+bool flight_due();            // true when idle and a refresh is due (cascade gate)
 const FlightData& flight_data();
 int flight_next_refresh_secs();   // seconds until next fetch (0 = fetching now)
 

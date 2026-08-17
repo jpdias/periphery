@@ -18,6 +18,7 @@ struct MoonInfo {
 void moon_begin();
 void moon_tick();                  // non-blocking; fetches once per local day
 bool moon_updated();               // true once after a successful fetch
+bool moon_due();                   // true when inactive and today's data is still missing (cascade gate)
 const MoonInfo& moon_data();
 
 // Synchronous, deterministic fetch used at boot (and anything that can afford to
