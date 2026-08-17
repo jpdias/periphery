@@ -32,7 +32,7 @@ export function corsHeaders() {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Vary": "Accept-Encoding, Origin",
+    "Vary": "Accept-Encoding, Origin, X-Periphery-Raw",
   };
 }
 
