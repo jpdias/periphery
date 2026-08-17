@@ -1,4 +1,4 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, toQuery, rawResponse, isInPortugal } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, toQuery, rawResponse, rememberGood, staleGood, isInPortugal } from "./utils.js";
 import { ARC_GIS_URL, ARC_GIS_TOKEN, INCIDENT_RADIUS_M, INCIDENT_MAX, INCIDENT_TTL } from "./env.js";
 
 export default async function handler(event) {
@@ -44,8 +44,18 @@ export default async function handler(event) {
   });
 
   const { status, body } = await upstreamJson(`${ARC_GIS_URL}?${q}`);
+  // Raw passthrough (device) mirrors the wrapped path's resilience: remember
+  // the last healthy FeatureCollection and serve it verbatim if the upstream
+  // throttles/errors, instead of forwarding an empty/broken body.
   const raw = rawResponse(event, status, body);
-  if (raw) return raw;
+  if (raw) {
+    if (status === 200 && body) rememberGood(`incidents:${ll}:${radiusM}`, body);
+    else {
+      const stale = staleGood(`incidents:${ll}:${radiusM}`);
+      if (stale) return rawResponse(event, 200, stale);
+    }
+    return raw;
+  }
   if (status !== 200 || !body) {
     return fail(502, "Upstream incidents request failed", { upstreamStatus: status });
   }

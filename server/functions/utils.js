@@ -229,3 +229,21 @@ export function cachedFetch(key, ttlMs, fn, isOk = v => Boolean(v)) {
     return value;
   });
 }
+
+// "Last known good" store for the raw passthrough path. The raw (uncached)
+// requests from the device firmware always hit the upstream live — so when an
+// upstream throttles (adsb.lol 429) or errors, the proxy used to forward that
+// broken body (HTML / "null") to the device, showing 0 aircraft/incidents. The
+// wrapped path was already resilient via cachedFetch; raw now mirrors that by
+// remembering the latest healthy body and serving it verbatim while the
+// upstream recovers.
+const lastGood = new Map();
+export function rememberGood(key, value) {
+  lastGood.set(key, { value, at: Date.now() });
+}
+// Returns the remembered body only if it's fresher than staleMs.
+export function staleGood(key, staleMs = 5 * 60_000) {
+  const hit = lastGood.get(key);
+  if (hit && Date.now() - hit.at < staleMs) return hit.value;
+  return null;
+}

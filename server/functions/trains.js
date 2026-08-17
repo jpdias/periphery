@@ -1,4 +1,4 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, rawResponse, cachedFetch } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, rawResponse, rememberGood, staleGood, cachedFetch } from "./utils.js";
 import { TRAIN_HOST, TRAIN_PATH, TRAIN_SVC, TRAIN_UA, TRAIN_TTL, TRAIN_WINDOW_H } from "./env.js";
 
 export default async function handler(event) {
@@ -41,6 +41,7 @@ export default async function handler(event) {
   // caching a Response would reuse its already-consumed body on the next call
   // and throw "Response body object should not be disturbed or locked".
   if (event.headers?.["x-periphery-raw"] === "1") {
+    const cacheKey = `trains:${params.station}:${date}:${start}:${end}`;
     const merged = [];
     for (const seg of segments) {
       const url = `https://${TRAIN_HOST}${TRAIN_PATH}/partidas-chegadas/${params.station}/${seg.date}%20${seg.start}/${seg.date}%20${seg.end}/${TRAIN_SVC}`;
@@ -49,10 +50,15 @@ export default async function handler(event) {
       });
       if (status === 200 && body && Array.isArray(body.response)) merged.push(...body.response);
     }
-    if (!merged.length) {
-      return fail(502, "Upstream trains request failed");
+    if (merged.length) {
+      // Remember the last healthy timetable so a flaky upstream doesn't empty
+      // the device's Trains screen (the response is served verbatim, raw).
+      rememberGood(cacheKey, { response: merged });
+      return rawResponse(event, 200, { response: merged });
     }
-    return rawResponse(event, 200, { response: merged });
+    const stale = staleGood(cacheKey);
+    if (stale) return rawResponse(event, 200, stale);
+    return fail(502, "Upstream trains request failed");
   }
 
   const all = await cachedFetch(`trains:${params.station}:${date}:${start}:${end}`, TRAIN_TTL * 1000, async () => {

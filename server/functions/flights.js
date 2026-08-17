@@ -1,4 +1,4 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch, rawResponse } from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch, rawResponse, rememberGood, staleGood } from "./utils.js";
 import { ADSB_BASE, ADSB_PATH, FLIGHTS_TTL, FLIGHT_DEFAULT_DIST } from "./env.js";
 
 export default async function handler(event) {
@@ -13,10 +13,19 @@ export default async function handler(event) {
   const url = `${ADSB_BASE}${ADSB_PATH}/lat/${params.lat}/lon/${params.lon}/dist/${dist}`;
 
   // Raw passthrough: the firmware consumes the upstream adsb.lol body unchanged.
+  // adsb.lol throttles (429) under load, so remember the last healthy body and
+  // serve it verbatim (stale) while the upstream recovers instead of forwarding
+  // a broken 429 HTML/null body to the device.
   if (event.headers?.["x-periphery-raw"] === "1") {
+    const cacheKey = `flights:${params.lat},${params.lon},${dist}`;
     const { status, body } = await upstreamJson(url);
-    const raw = rawResponse(event, status, body);
-    if (raw) return raw;
+    if (status === 200 && body) {
+      rememberGood(cacheKey, body);
+      const raw = rawResponse(event, status, body);
+      if (raw) return raw;
+    }
+    const stale = staleGood(cacheKey);
+    if (stale) return rawResponse(event, 200, stale);
     return fail(502, "Upstream flights request failed", { upstreamStatus: status });
   }
 
