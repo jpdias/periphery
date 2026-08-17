@@ -36,10 +36,7 @@ export const INCIDENT_TTL = Number(env("INCIDENT_TTL", "300"));
 
 // --- Flights (ADS-B) ---
 export const ADSB_BASE = process.env.ADSB_BASE; // required, no default
-export const ADSB_FALLBACK_BASE = env(
-  "ADSB_FALLBACK_BASE",
-  "https://opendata.adsb.fi"
-); // secondary provider, same /api/v2 path
+export const ADSB_FALLBACK_BASE = process.env.ADSB_FALLBACK_BASE; // required, no default
 export const ADSB_PATH = env("ADSB_PATH", "/api/v2");
 export const FLIGHTS_TTL = Number(env("FLIGHTS_TTL", "30"));
 export const FLIGHT_DEFAULT_DIST = env("FLIGHT_DEFAULT_DIST", "25");
