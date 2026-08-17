@@ -152,6 +152,7 @@ export const FUEL_IDS = {
 // env vars, never committed.
 export const INFOAGUA_BASE = process.env.INFOAGUA_BASE; // required, no default
 export const INFOAGUA_PATH = env("INFOAGUA_PATH", "/pt/seca");
+export const INFOAGUA_CHEIAS_PATH = env("INFOAGUA_CHEIAS_PATH", "/pt/cheias");
 export const ALBUF_GEOM_URL = process.env.ALBUF_GEOM_URL; // required, no default
 export const ALBUF_TTL = Number(env("ALBUF_TTL", "43200"));
 export const ALBUF_MAX_YEARS = Number(env("ALBUF_MAX_YEARS", "1"));

@@ -1,22 +1,3 @@
-import {
-  normalizeEvent,
-  handleOptions,
-  ok,
-  fail,
-  upstreamJson,
-  upstreamText,
-  cachedFetch,
-  haversineKm,
-  toQuery,
-} from "./utils.js";
-import {
-  UPSTREAM_TIMEOUT_MS,
-  INFOAGUA_BASE,
-  INFOAGUA_PATH,
-  ALBUF_GEOM_URL,
-  ALBUF_TTL,
-} from "./env.js";
-
 // Reservoir storage (albufeiras) in Portugal from APA's InfoÁgua portal.
 // InfoÁgua serves the current storage snapshot server-rendered on its seca
 // page: a `DATA_VolumesMap` JSON object with one row per river basin (% of full
@@ -26,63 +7,16 @@ import {
 // Unlike the legacy SNIRH bulletin (snirh.apambiente.pt — ASN/geo blocked for
 // cloud egress), infoagua.apambiente.pt is served from a separate host that
 // Netlify's cloud egress can fetch directly.
+import { normalizeEvent, handleOptions, ok, fail, cachedFetch } from "./utils.js";
+import {
+  INFOAGUA_BASE,
+  INFOAGUA_PATH,
+  ALBUF_GEOM_URL,
+  ALBUF_TTL,
+} from "./env.js";
+import { fetchInfoaguaPage, extractVar, fetchDams, rankBasins } from "./infoagua.js";
+
 const INFG_MONTHS = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-
-// Map the geometry layer's basin names (SNIRH-style) to InfoÁgua's basin rows.
-// Basins with no InfoÁgua row (MINHO/ÂNCORA) are skipped in the ranking.
-const GEOM_ALIAS = {
-  "ARADE": "Arade",
-  "AVE": "Ave",
-  "AVE/LEÇA": "Ave",
-  "CÁVADO/RIBEIRAS COSTEIRAS": "Cávado",
-  "DOURO": "Douro",
-  "GUADIANA": "Guadiana",
-  "LIMA": "Lima",
-  "MIRA": "Mira",
-  "MONDEGO": "Mondego",
-  "RIBEIRAS DO ALENTEJO": "Ribeiras do Alentejo",
-  "RIBEIRAS DO OESTE": "Ribeiras do Oeste",
-  "SADO": "Sado",
-  "TEJO": "Tejo",
-  "VOUGA/RIBEIRAS COSTEIRAS": "Vouga",
-};
-
-// The geometry layer groups the Algarve under one bacia; InfoÁgua splits it by
-// lon: west of the frontier (~ -8.4) is Barlavento, east is Sotavento.
-function geomAlgarveLon(lon) {
-  return lon < -8.4 ? "Ribeiras do Barlavento" : "Ribeiras do Sotavento";
-}
-
-// InfoÁgua serves a standard UTF-8 HTML page; grab the embedded JSON snapshot.
-async function fetchInfoagua(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
-        "Cache-Control": "no-cache",
-      },
-    });
-    const text = await res.text();
-    const m = text.match(/var DATA_VolumesMap = (\{[\s\S]*?\});/);
-    let snap;
-    try {
-      snap = m ? JSON.parse(m[1]) : null;
-    } catch {
-      snap = null;
-    }
-    return { status: res.status, snap };
-  } catch {
-    return { status: 0, snap: null };
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export default async function handler(event) {
   event = normalizeEvent(event);
@@ -102,23 +36,16 @@ export default async function handler(event) {
   }
 
   const url = `${INFOAGUA_BASE}${INFOAGUA_PATH}`;
-  const geomUrl = `${ALBUF_GEOM_URL}?${toQuery({
-    where: "1=1",
-    outFields: "bacia,albufeira,longdd,latdd",
-    returnGeometry: "false",
-    resultRecordCount: 500,
-    f: "pjson",
-  })}`;
 
-  const { status, snap, geom } = await cachedFetch(
-    `albufeiras:${url}:${hasLatLon ? geomUrl : ""}`,
+  const { status, snap, dams } = await cachedFetch(
+    `albufeiras:${url}:${hasLatLon ? ALBUF_GEOM_URL : ""}`,
     ALBUF_TTL * 1000,
     async () => {
-      const [pageRes, geomRes] = await Promise.all([
-        fetchInfoagua(url),
-        hasLatLon ? upstreamJson(geomUrl) : Promise.resolve(null),
+      const [pageRes, geometry] = await Promise.all([
+        fetchInfoaguaPage(url),
+        hasLatLon ? fetchDams(ALBUF_GEOM_URL) : Promise.resolve([]),
       ]);
-      return { status: pageRes.status, snap: pageRes.snap, geom: geomRes && geomRes.body };
+      return { status: pageRes.status, snap: extractVar(pageRes.html, "DATA_VolumesMap"), dams: geometry };
     },
   );
   if (status !== 200 || !snap) {
@@ -156,39 +83,15 @@ export default async function handler(event) {
 
   let result = basins;
   if (hasLatLon) {
-    // Rank basins by the distance to their nearest dam; keep the n closest.
-    const dams = (geom && Array.isArray(geom.features) ? geom.features : [])
-      .map((f) => {
-        const a = f.attributes || {};
-        const long = Number(a.longdd);
-        const latt = Number(a.latdd);
-        if (!Number.isFinite(long) || !Number.isFinite(latt)) return null;
-        return { bacia: a.bacia, name: a.albufeira, lat: latt, lon: long };
-      })
-      .filter(Boolean);
-
-    const basinDams = {};
-    for (const d of dams) {
-      const b = d.bacia === "RIB EIRAS DO ALGARVE" ? geomAlgarveLon(d.lon) : GEOM_ALIAS[d.bacia] || d.bacia;
-      if (!basins.some((r) => r.name === b)) continue;
-      (basinDams[b] = basinDams[b] || []).push(d);
-    }
-
-    const scored = result.map((r) => {
-      const ds = basinDams[r.name] || [];
-      const dist = ds.length
-        ? Math.min(...ds.map((d) => haversineKm(lat, Number(params.lon), d.lat, d.lon)))
-        : Infinity;
-      return { ...r, dist };
-    });
-    result = scored
+    const basinNames = basins.map((r) => r.name);
+    const ranked = rankBasins(lat, Number(params.lon), dams, basinNames);
+    const dist = new Map(ranked.map((r) => [r.name, r.distance]));
+    result = basins
+      .map((r) => ({ ...r, dist: dist.get(r.name) ?? Infinity }))
       .filter((r) => Number.isFinite(r.dist))
       .sort((a, b) => a.dist - b.dist)
       .slice(0, n)
-      .map((r) => {
-        const { dist, ...rest } = r;
-        return { ...rest, distance_km: Math.round(dist) };
-      });
+      .map(({ dist: d, ...rest }) => ({ ...rest, distance_km: Math.round(d) }));
     if (!result.length) {
       return fail(502, "No dam data available to rank basins by proximity");
     }

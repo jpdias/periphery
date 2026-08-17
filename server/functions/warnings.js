@@ -1,11 +1,18 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal } from "./utils.js";
-import { IPMA_BASE, IPMA_WARNINGS_PATH, WARNINGS_TTL } from "./env.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch, haversineKm, isInPortugal } from "./utils.js";
+import { IPMA_BASE, IPMA_WARNINGS_PATH, WARNINGS_TTL, INFOAGUA_BASE, INFOAGUA_PATH, INFOAGUA_CHEIAS_PATH, ALBUF_GEOM_URL } from "./env.js";
+import { fetchInfoaguaAlerts, fetchDams, rankBasins } from "./infoagua.js";
 
 // Weather warnings (avisos) for Portugal from IPMA. The feed returns per-area
 // warnings with a district code (idAreaAviso), a type (awarenessTypeName), a
 // level (green/yellow/orange/red) and an active window. We only surface the
 // district the observer is actually in (nearest by centroid), drop green
 // noise, and group the rest by type for the widget.
+//
+// The same widget also surfaces InfoÁgua (APA) hydrological alerts — drought
+// severity per river basin from the seca page, plus any active flood alerts
+// from the cheias page — so the observer sees water stress alongside the
+// meteorological warnings. InfoÁgua data is monthly, so it is cached longer.
+const HYDRO_TTL = Number(process.env.HYDRO_TTL || 3600); // 1h cache for InfoÁgua alerts
 const AREAS = {
   PTO: "Porto", LSB: "Lisboa", FAR: "Faro", BRG: "Braga", BGC: "Bragança",
   AVG: "Aveiro", CBR: "Coimbra", CBO: "Castelo Branco", EVR: "Évora",
@@ -89,6 +96,9 @@ export default async function handler(event) {
 
   alerts.sort((a, b) => b.level_value - a.level_value);
 
+  // Hydrological alerts from InfoÁgua (drought per basin + active floods).
+  const hydrologic = await loadHydrologic(lat, Number(params.lon));
+
   return ok({
     source: "IPMA",
     area: {
@@ -99,5 +109,74 @@ export default async function handler(event) {
     max_level: alerts.length ? alerts[0].level : "none",
     count: alerts.length,
     alerts,
+    hydrologic,
   }, { ttl: WARNINGS_TTL });
+}
+
+// Fetch InfoÁgua's seca (drought) alerts + flood alerts, plus (when the
+// geometry env var is set) which basin the observer is in. Returns null when
+// the extra data is not available (points outside Portugal, missing env vars).
+async function loadHydrologic(lat, lon) {
+  if (!INFOAGUA_BASE) return null;
+
+  const key = `warnings:infoagua:${INFOAGUA_BASE}${INFOAGUA_PATH}${INFOAGUA_CHEIAS_PATH}`;
+  const { drought, floods, dams } = await cachedFetch(
+    key,
+    HYDRO_TTL * 1000,
+    async () => {
+      const [alerts, geometry] = await Promise.all([
+        fetchInfoaguaAlerts(INFOAGUA_BASE, INFOAGUA_PATH, INFOAGUA_CHEIAS_PATH),
+        ALBUF_GEOM_URL ? fetchDams(ALBUF_GEOM_URL) : Promise.resolve([]),
+      ]);
+      return { ...alerts, dams: geometry };
+    },
+    (v) => Boolean(v && v.drought),
+  );
+
+  if (!drought || !drought.length) return null;
+
+  // Severity: 1 = driest/extrema … 6 = húmido. Only flag the observed basin as
+  // "active" when it is actually below Normal (state < 5).
+  const dated = drought.sort((a, b) => (a.state || 6) - (b.state || 6));
+
+  let nearest = null;
+  const ranks = rankBasins(lat, lon, dams || [], dated.map((d) => d.basin_name));
+  const top = ranks[0];
+  if (top) {
+    const hit = dated.find((d) => d.basin_name === top.name);
+    if (hit) nearest = {
+      basin: hit.basin_name,
+      distance_km: Math.round(top.distance),
+      state: hit.state,
+      state_name: hit.state_name || "",
+      color: hit.color || null,
+      volume: typeof hit.current_volume === "string" && hit.current_volume !== "" ? Number(hit.current_volume) : null,
+      last_update: hit.last_update || null,
+    };
+  }
+
+  const droughts = (dated.filter((d) => Number(d.state) < 5) || []).map((d) => ({
+    basin: d.basin_name,
+    state: d.state,
+    state_name: d.state_name || "",
+    color: d.color || null,
+    volume: typeof d.current_volume === "string" && d.current_volume !== "" ? Number(d.current_volume) : null,
+    last_update: d.last_update || null,
+  }));
+
+  const floodList = (floods || []).map((f) => ({
+    basin: f.basin_name || f.basin || null,
+    level: f.alert_level_id || f.level || null,
+    color: f.color || null,
+    last_update: f.last_update || null,
+  }));
+
+  return {
+    source: "APA InfoÁgua",
+    updated: dated[0]?.last_update || null,
+    nearest,
+    droughts,
+    flood_count: floodList.length,
+    floods: floodList,
+  };
 }

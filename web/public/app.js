@@ -1274,6 +1274,51 @@ async function loadLightning() {
 
 // ---- Warnings (IPMA avisos) ---------------------------------------------
 
+const HYDRO_LEVELS = { 1: "red", 2: "red", 3: "orange", 4: "yellow" }; // InfoÁgua drought state -> css class
+const HYDRO_TAGS = { 1: "extrema", 2: "severa", 3: "moderada", 4: "fraca" };
+
+function fmtPct(v) {
+  if (v === null || v === undefined || !isFinite(v)) return null;
+  return `${Math.round(v * 100)}%`;
+}
+
+// InfoÁgua hydrological alerts — drought severity per basin + any flood
+// alerts. Rendered as an extra block inside the Weather Warnings card.
+function renderHydro(el, hydro) {
+  if (!hydro) return;
+  const parts = [`<li class="hydro-head"><div class="w-dist">Hydrological <span class="lv-tag">InfoÁgua</span></div></li>`];
+
+  if (hydro.nearest) {
+    const n = hydro.nearest;
+    const lv = HYDRO_LEVELS[n.state] || "green";
+    parts.push(`<li class="lv-${lv} hydro"${n.color ? ` style="border-left-color:${esc(n.color)}"` : ""}>
+      <div class="w-dist">${esc(n.basin)} · nearest <span class="lv-tag">${HYDRO_TAGS[n.state] || esc(n.state_name || "normal")}</span></div>
+      <div class="w-alerts">vol ${fmtPct(n.volume) || "—"} · ${n.distance_km} km away</div>
+    </li>`);
+  }
+
+  for (const d of hydro.droughts || []) {
+    const lv = HYDRO_LEVELS[d.state] || "green";
+    parts.push(`<li class="lv-${lv} hydro"${d.color ? ` style="border-left-color:${esc(d.color)}"` : ""}>
+      <div class="w-dist">${esc(d.basin)} <span class="lv-tag">${HYDRO_TAGS[d.state] || esc(d.state_name || "seca")}</span></div>
+      <div class="w-alerts">vol ${fmtPct(d.volume) || "—"}${d.last_update ? ` · ${esc(d.last_update)}` : ""}</div>
+    </li>`);
+  }
+
+  if (hydro.flood_count > 0) {
+    for (const f of hydro.floods || []) {
+      parts.push(`<li class="lv-red hydro"${f.color ? ` style="border-left-color:${esc(f.color)}"` : ""}>
+        <div class="w-dist">${esc(f.basin || "Flood alert")} <span class="lv-tag">cheia</span></div>
+        <div class="w-alerts">active${f.last_update ? ` · ${esc(f.last_update)}` : ""}</div>
+      </li>`);
+    }
+  }
+
+  if (parts.length > 1) {
+    el.insertAdjacentHTML("beforeend", parts.join(""));
+  }
+}
+
 async function loadWarnings() {
   const el = document.getElementById("warning-list");
   try {
@@ -1289,20 +1334,26 @@ async function loadWarnings() {
       data.area ? `${data.area.name}${data.count ? " · " + data.count : ""}` : "";
     if (!alerts.length) {
       el.innerHTML = `<div class="empty">No active warnings in ${data.area?.name || "your district"}</div>`;
-      stamp("warnings");
-      return;
+    } else {
+      el.innerHTML = alerts.map(a => `
+        <li class="lv-${a.level}">
+          <div class="w-dist">${esc(a.type)} <span class="lv-tag">${esc(a.level)}</span></div>
+          <div class="w-alerts">until ${a.end ? fmtTime(a.end) : "—"}</div>
+        </li>`).join("");
     }
-    el.innerHTML = alerts.map(a => `
-      <li class="lv-${a.level}">
-        <div class="w-dist">${esc(a.type)} <span class="lv-tag">${esc(a.level)}</span></div>
-        <div class="w-alerts">until ${a.end ? fmtTime(a.end) : "—"}</div>
-      </li>`).join("");
-    trackAlerts("warnings", alerts
-      .filter(a => a.level !== "green")
-      .map(a => ({
-        sig: `${a.type}|${a.level}|${a.start || ""}|${a.end || ""}`,
-        text: `${a.type} (${a.level}) · until ${a.end ? fmtTime(a.end) : "—"}`,
-      })));
+    renderHydro(el, data.hydrologic);
+    trackAlerts("warnings", [
+      ...alerts
+        .filter(a => a.level !== "green")
+        .map(a => ({
+          sig: `${a.type}|${a.level}|${a.start || ""}|${a.end || ""}`,
+          text: `${a.type} (${a.level}) · until ${a.end ? fmtTime(a.end) : "—"}`,
+        })),
+      ...(data.hydrologic?.droughts || []).map(d => ({
+        sig: `hydro-${d.basin}|${d.state}`,
+        text: `${d.basin}: ${d.state_name || `seca (${d.state})`} · vol ${fmtPct(d.volume) || "—"}`,
+      })),
+    ]);
     stamp("warnings");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;

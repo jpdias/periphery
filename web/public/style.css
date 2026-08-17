@@ -498,6 +498,16 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 .warning-list li.lv-yellow { border-left-color: var(--warn); }
 .warning-list li.lv-orange { border-left-color: #ff9800; }
 .warning-list li.lv-red { border-left-color: var(--danger); background: rgba(255, 59, 92, 0.05); }
+.warning-list li.hydro-head {
+  border-left: none;
+  background: none;
+  margin: 10px 0 2px;
+  padding: 4px 10px 2px;
+  border-top: 1px dashed var(--border);
+  border-radius: 0;
+}
+.warning-list li.hydro-head .w-dist { color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.warning-list li.hydro { border-left-style: solid; }
 .w-dist { font-weight: 600; }
 .lv-tag {
   font-size: 9px;
