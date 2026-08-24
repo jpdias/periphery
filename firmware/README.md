@@ -244,16 +244,14 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - External IP: ipinfo.io
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
-- Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
-- Incidents: ANEPC Ocorrencias ArcGIS FeatureServer over TLS, 5 most recent by
+- Flights: adsb.lol / adsb.fi open data API via the Netlify proxy over TLS, ~30s refresh
+- Incidents: ANEPC Ocorrencias ArcGIS FeatureServer via the Netlify proxy over TLS, 5 most recent by
   occurrence date, ~15 min refresh
-- Sun/moon: [sunrise-sunset.org v2](https://sunrise-sunset.org/api) over **plain
-  HTTP** (`api.sunrise-sunset.org`, no API key, no TLS — the endpoint explicitly
-  supports non-TLS for ESP8266). Returns sunrise/set, moonrise/set, moon phase name
+- Trains: IP timetable API via the Netlify proxy over TLS, smart refresh (next departure time), 1-30 min interval
+- Sun/moon: [sunrise-sunset.org v2](https://sunrise-sunset.org/api) via the
+  Netlify proxy over TLS. Returns sunrise/set, moonrise/set, moon phase name
   + illumination in one call. Fetched **synchronously at boot** and then once per
-  local day via the non-blocking FSM. Plain HTTP makes it near-instant and means it
-  no longer needs a BearSSL/TLS session (so it doesn't contend with the flight
-  radar's TLS client). The API requests attribution — show a link to
+  local day via the non-blocking FSM. The API requests attribution — show a link to
   sunrise-sunset.org where the data is displayed.
 - Forecast: Open-Meteo, fetched at boot and then **twice a day** (midnight + noon, local).
 
@@ -270,13 +268,14 @@ Instead of racing several non-blocking FSMs at startup, `setup()` runs a fixed,
 data...` → one line per step, `+`=done / `!`=fail / `.`=working):
 1. **NTP sync** — wait for a real clock (date-based fetches are meaningless at epoch).
 2. **Weather** + **Forecast** + **External IP** — plain HTTP, no TLS contention.
-3. **Sun / Moon** — TLS to USNO; runs *alone* as the first TLS session.
-4. **Flight radar** — TLS to adsb.fi; runs only after moon released the lock.
-5. **Incidents** — TLS to ArcGIS; runs only after flight released the lock (when the screen is enabled).
-6. **Ready** — hand off to the main loop.
+3. **Sun / Moon** — TLS via proxy; runs *alone* as the first TLS session.
+4. **Trains** — TLS via proxy; runs after moon released the lock.
+5. **Flight radar** — TLS via proxy; runs after trains released the lock.
+6. **Incidents** — TLS via proxy; runs only after flight released the lock (when the screen is enabled).
+7. **Ready** — hand off to the main loop.
 
 Each step either completes or times out (12s) before the next starts, so there's no
-overlap of the two TLS sessions and the radar/moon can never wedge as they used to.
+overlap of TLS sessions and fetchers can never wedge as they used to.
 The forecast is then refreshed only **twice a day** (midnight + noon) instead of on
 every weather cycle.
 
@@ -352,3 +351,31 @@ only — no Unicode glyphs, so moon phase is drawn as a custom filled shape.)
 The upload (`pio run -t upload` / `-t uploadfs`) must run from **Windows** — WSL
 can't drive the serial `/dev/ttyS*` ports. Building works fine in WSL. Also symlink
 `.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler path errors.
+
+### Cascade scheduler and consecutive-failure reboot
+The cascade scheduler (`netsched.cpp`) serializes all fetchers so only one TLS
+session is active at a time. A consecutive-failure counter tracks whether any
+fetcher succeeds across a full round — if no fetcher reports success for
+`MAX_CONSECUTIVE_FAILS * NS_COUNT` completions, the device reboots (safety net
+for a completely broken network).
+
+Every fetcher must call `netsched_record_success()` when its parse succeeds
+(resets the counter). If a fetcher omits this call, the counter accumulates even
+during normal operation and eventually triggers a spurious reboot. Ensure all
+fetchers (including ESPHome and moon) call `netsched_record_success()` on success.
+
+### Chunked transfer encoding from Netlify
+Netlify Functions returns `Transfer-Encoding: chunked` for HTTP/1.1 responses that
+don't set `Content-Length`. The ESP8266's `skip_proxy_headers()` (in `netproxy.cpp`)
+scans for the `Transfer-Encoding: chunked` header and, after the `\r\n\r\n`
+delimiter, strips the chunk-size prefix line so the body stream starts directly at
+the JSON payload. Callers (flights, incidents, trains, moon) use
+`skip_proxy_headers()` + `skip_chunk_prefix()` for both blocking boot paths and
+non-blocking FSMs. This replaces the old inline header skip and the per-module
+`ChunkedStream` wrapper.
+
+### ArduinoJson v7 filter syntax
+ArduinoJson v7 changed the filter syntax for arrays. The v6 call
+`filter["key"].add<JsonObject>()` silently produces an empty result in v7. Use
+`filter["key"][0].to<JsonObject>()` instead. Symptoms: the parse succeeds with no
+error but returns 0 items.

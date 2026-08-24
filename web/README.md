@@ -20,10 +20,14 @@ web/
 ## Frontend config (`public/config.js`)
 
 `window.PERIPHERY_CONFIG` holds the client-side defaults (default lat/lon, flight
-range, refresh interval, API base). `apiBase` points at the Netlify API host
-(`https://prismatic-horse-4c465a.netlify.app`); leave it `""` for same-origin
-`/api/*` during local dev. Runtime overrides made in the ⚙ settings are stored in
-`localStorage` and take precedence over `config.js`.
+range, refresh interval, API base, card URLs, alert settings). `apiBase` points at
+the Netlify API host (`https://prismatic-horse-4c465a.netlify.app`); leave it `""`
+for same-origin `/api/*` during local dev. Runtime overrides made in the ⚙ settings
+are stored in `localStorage` and take precedence over `config.js`.
+
+Card external links (e.g. flights → ADSB Exchange, trains → Infraestruturas de
+Portugal) are configured via `cardUrls` in `config.js`, using `{placeholder}` syntax
+for dynamic values (lat, lon, station, etc.).
 
 ## Local development
 
@@ -32,6 +36,23 @@ The static site alone can be served with any static file server:
 ```bash
 cd ../server && npm run dev:light   # serves web/public + API on :8080
 ```
+
+## Features
+
+- **Config-driven card URLs**: each widget links to an external reference site
+  (e.g. ADSB Exchange for flights, Infraestruturas de Portugal for trains, IPMA
+  for warnings). Links are defined in `config.js` `cardUrls` with `{placeholder}`
+  syntax resolved at click time.
+- **Relative timestamps**: data ages shown as "just now", "5s ago", "2m ago",
+  updated every 30s.
+- **Alert toasts**: pop up when new incidents/warnings appear; at most 2 visible at
+  a time (oldest auto-dismissed). Dismissed alerts are marked in `localStorage` and
+  never re-fire.
+- **Widget visibility toggle**: each widget can be hidden via the ⚙ settings; hidden
+  widgets dim with reduced opacity and show a "hidden" tag.
+- **Loading spinners**: per-card spinner ring while data is fetching; global topbar
+  ring during sync.
+- **PWA**: service worker with offline caching (bump `sw.js` cache version on deploy).
 
 ## Deploy
 

@@ -12,3 +12,13 @@
 bool proxy_enabled();                       // true if api_base is set
 const char* proxy_host();                   // host from api_base (no scheme/path)
 String proxy_path(const char* widget, const String &query);  // "/api/<widget>?<query>"
+
+// Shared header parser that skips HTTP response headers up to \r\n\r\n.
+// Detects Transfer-Encoding: chunked and sets an internal flag. Returns true
+// once the body stream is positioned at the first body byte.
+bool skip_proxy_headers(Stream &s);
+
+// After skip_proxy_headers returns true for a chunked response, call this to
+// discard the chunk-size prefix line. Returns true once the prefix is consumed,
+// false if more data is needed (call again on next loop iteration).
+bool skip_chunk_prefix(Stream &s);

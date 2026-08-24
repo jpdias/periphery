@@ -147,75 +147,8 @@ static bool train_request(String &host, String &url) {
 
 // Consume response headers up to the blank line; returns true when body reached.
 static bool http_headers() {
-  static uint8_t m = 0;
-  while (cli->available()) {
-    char c = (char)cli->read();
-    if ((m == 0 || m == 2) && c == '\r') m++;
-    else if ((m == 1 || m == 3) && c == '\n') { m++; if (m == 4) { m = 0; return true; } }
-    else m = 0;
-  }
-  if (!cli->connected() && !cli->available()) return false;   // closed, no body
-  if (millis() - timer > 6000) return false;                  // header timeout
-  return false;                                               // need more data
+  return skip_proxy_headers(*cli);
 }
-
-// Stream wrapper that transparently strips the IP API's chunked transfer
-// encoding, so ArduinoJson can parse straight from the TLS client without ever
-// buffering the whole body. This keeps peak heap tiny (a 12KB body String can't
-// be held while the TLS buffers are alive). Plain (non-chunked) identity bodies
-// are streamed byte-by-byte too - never buffered into a String.
-class ChunkedStream : public Stream {
- public:
-  explicit ChunkedStream(WiFiClientSecure &c) : s(c) { s.setTimeout(10000); }
-
-  int available() override { return s.available(); }
-  int peek() override { return s.peek(); }
-  size_t write(uint8_t b) override { (void)b; return 0; }   // read-only wrapper
-
-  int read() override {
-    if (eof) return -1;
-    if (!decided) {
-      // Decide chunked-vs-identity from the very first body byte without
-      // consuming it. An identity body starts with '{' (minified JSON); any
-      // other first byte means the chunk-size line has begun.
-      int p = s.peek();
-      if (p < 0) { eof = true; return -1; }
-      identity = (p == '{');
-      decided = true;
-    }
-    if (identity) {
-      int c = s.read();
-      if (c < 0) { eof = true; return -1; }
-      return c;
-    }
-    if (chunk == -1) {
-      String line = s.readStringUntil('\n');
-      line.trim();
-      if (line.length() == 0) { eof = true; return -1; }
-      chunk = strtol(line.c_str(), NULL, 16);
-      if (chunk <= 0) { eof = true; return -1; }
-    }
-    if (chunk > 0) {
-      int c = s.read();
-      if (c < 0) { eof = true; return -1; }
-      chunk--;
-      if (chunk == 0) {
-        char crlf[2];
-        s.readBytes((uint8_t*)crlf, 2);   // consume trailing CRLF
-        chunk = -1;                        // next byte starts a size line
-      }
-      return c;
-    }
-    return -1;
-  }
-
- private:
-  WiFiClientSecure &s;
-  long chunk = -1;
-  bool eof = false;
-  bool decided = false;
-  bool identity = false;
-};
 
 // Smart TTL: once we have a timetable, only refetch when the next departure has
 // passed — the display is then stale and the next train is the new head of the
@@ -241,8 +174,8 @@ static void set_next_refresh() {
 }
 
 // Parse straight from the TLS stream with a small filter so the working doc
-// stays tiny (the de-chunking wrapper above never buffers the full body). The
-// 30-min window keeps the filtered result well within the auto-growing doc.
+// stays tiny. The caller must have stripped headers and any chunked encoding
+// prefix before calling this.
 static void parse_timetable(Stream &s) {
   JsonDocument filter;
   JsonObject fresp = filter["response"][0].to<JsonObject>();
@@ -359,8 +292,8 @@ void trains_tick() {
         else if (millis() - timer > 6000) fail("api header timeout");
       } else { // S_BODY
         if (cli->available()) {
-          ChunkedStream cs(*cli);
-          parse_timetable(cs);
+          if (!skip_chunk_prefix(*cli)) break;   // chunk prefix not yet fully available
+          parse_timetable(*cli);  // stream directly from TLS client
           cleanup();            // free TLS buffers (now empty/streamed)
           netsched_done(NS_TRAINS);
           phase = P_IDLE;
@@ -412,26 +345,27 @@ bool trains_fetch_blocking(unsigned long timeoutMs) {
                    "X-Periphery-Raw: 1\r\n" +
                    "Connection: close\r\n\r\n";
       c->print(req);
-      uint8_t m = 0;
+      // Skip headers + chunk prefix, then parse directly from the TLS stream.
       while (millis() - t0 < timeoutMs) {
         ESP.wdtFeed();
-        while (c->available() && m < 4) {
-          char ch = c->read();
-          if ((m == 0 || m == 2) && ch == '\r') m++;
-          else if ((m == 1 || m == 3) && ch == '\n') m++;
-          else m = 0;
+        if (skip_proxy_headers(*c)) {
+          while (millis() - t0 < timeoutMs) {
+            ESP.wdtFeed();
+            if (skip_chunk_prefix(*c)) {
+              parse_timetable(*c);
+              ok = gData.valid;
+              if (!ok) { gData.lastUpdated = time_utc_now(); gData.lastOk = false; }
+              goto trn_done;
+            }
+            if (!c->connected() && !c->available()) break;
+          }
+          break;
         }
-        if (m == 4) break;
         if (!c->connected() && !c->available()) break;
       }
-      if (m == 4) {
-        ChunkedStream cs(*c);
-        parse_timetable(cs);
-        c->stop(); delete c; c = nullptr;
-        tls_release();            // free TLS buffers (now empty/streamed)
-        ok = gData.valid;
-        if (!ok) { gData.lastUpdated = time_utc_now(); gData.lastOk = false; }
-      }
+trn_done:
+      c->stop(); delete c; c = nullptr;
+      tls_release();
     }
     lastCycle = millis();
     retryAt = 0;
