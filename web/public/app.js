@@ -276,6 +276,12 @@ function showAlertToast(widget, label, items) {
     });
     box.appendChild(toast);
   });
+  // Keep at most 2 visible toasts; dismiss the oldest excess.
+  while (box.children.length > 2) {
+    const old = box.children[0];
+    old.classList.add("gone");
+    setTimeout(() => old.remove(), 250);
+  }
 }
 
 // Compare freshly fetched item signatures against previously seen ones. A

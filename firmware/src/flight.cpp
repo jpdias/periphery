@@ -123,7 +123,7 @@ static bool flight_request(String &host, String &url) {
 // The filter drops every field we don't need, keeping the working doc tiny.
 static void parse(Stream &s) {
   JsonDocument filter;
-  JsonObject fac = filter["aircraft"].add<JsonObject>();
+  JsonObject fac = filter["aircraft"][0].to<JsonObject>();
   fac["flight"] = true;
   fac["alt_baro"] = true;
   fac["track"] = true;
@@ -164,17 +164,10 @@ static void parse(Stream &s) {
 }
 
 // Non-blocking: consume HTTP response headers up to the blank line. Returns
-// true once the body is reached.
-static uint8_t hdrMatch = 0;   // progress through "\r\n\r\n"; reset per fetch
+// true once the body is reached. Handles Transfer-Encoding: chunked by
+// stripping the chunk-size prefix after headers.
 static bool skip_headers(Stream &s) {
-  uint8_t &match = hdrMatch;
-  while (s.available()) {
-    char c = (char)s.read();
-    if ((match == 0 || match == 2) && c == '\r') match++;
-    else if ((match == 1 || match == 3) && c == '\n') { match++; if (match == 4) { match = 0; return true; } }
-    else match = 0;
-  }
-  return false;
+  return skip_proxy_headers(s);
 }
 
 void flight_tick() {
@@ -239,8 +232,8 @@ void flight_tick() {
       break;
 
     case P_READ:
-      // Wait for body data before parsing so we never parse an empty stream.
       if (cli->available()) {
+        if (!skip_chunk_prefix(*cli)) break;   // chunk prefix not yet fully available
         parse(*cli);              // streams from the client, stops at closing brace
         cleanup();
         netsched_done(NS_FLIGHT);
@@ -288,22 +281,18 @@ bool flight_fetch_blocking(unsigned long timeoutMs) {
       if (c->available()) break;
       if (!c->connected()) { c->stop(); delete c; tls_release(); return false; }
     }
-    // Skip headers up to the blank line.
-    uint8_t m = 0;
+    // Skip headers (including chunked encoding prefix).
     while (millis() - t0 < timeoutMs) {
       ESP.wdtFeed();
-      while (c->available()) {
-        char ch = c->read();
-        if ((m == 0 || m == 2) && ch == '\r') m++;
-        else if ((m == 1 || m == 3) && ch == '\n') { m++; if (m == 4) goto body; }
-        else m = 0;
+      if (skip_proxy_headers(*c)) {
+        while (millis() - t0 < timeoutMs) {
+          ESP.wdtFeed();
+          if (skip_chunk_prefix(*c)) { parse(*c); ok = gData.valid; break; }
+          if (!c->connected() && !c->available()) break;
+        }
+        break;
       }
       if (!c->connected() && !c->available()) break;
-    }
-body:
-    if (m == 4) {
-      parse(*c);   // streams from the client, stops at closing brace
-      ok = gData.valid;
     }
     lastCycle = millis();
     first = false;

@@ -123,6 +123,7 @@ static void advance() {
     ehIdx = 0;
     ehLast = millis();
     ehActive = false;
+    netsched_record_success();
     netsched_done(NS_ESPHOME);
   } else {
     start_sensor();

@@ -160,6 +160,7 @@ void moon_tick() {
         netsched_done(NS_MOON);
         mlog.printf("[MOON] body len=%d\n", raw.length());
         if (parse_moon_body(raw, gMoon)) {
+          netsched_record_success();
           // Mark today fetched using the date we actually requested.
           struct tm t;
           memset(&t, 0, sizeof(t));
@@ -209,21 +210,22 @@ bool moon_fetch_blocking(unsigned long timeoutMs) {
              "User-Agent: periphery\r\n" +
              "X-Periphery-Raw: 1\r\n" +
              "Connection: close\r\n\r\n");
-    String body; bool inBody = false; String hdr;
     unsigned long t0 = millis();
+    // Wait for data and skip headers (including chunked encoding prefix).
+    while (millis() - t0 < timeoutMs) {
+      ESP.wdtFeed();
+      if (skip_proxy_headers(*c)) break;
+      if (!c->connected() && !c->available()) break;
+    }
+    // Now read the body into a String.
+    String body;
     while (millis() - t0 < timeoutMs) {
       ESP.wdtFeed();
       while (c->available()) {
         char ch = c->read();
-        if (!inBody) {
-          hdr += ch;
-          if (ch == '\n' && (hdr == "\r\n" || hdr == "\n")) inBody = true;
-          hdr = (ch == '\n') ? "" : hdr;
-        } else {
-          body += ch;
-        }
+        body += ch;
       }
-      if (inBody && !c->connected() && !c->available()) break;
+      if (!c->connected() && !c->available()) break;
       if (body.length() > 4000) break;
     }
     mlog.printf("[MOON] block body len=%d\n", body.length());

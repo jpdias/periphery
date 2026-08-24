@@ -13,7 +13,7 @@ periphery/
 
 | Part | What it does | Where it runs |
 |------|--------------|---------------|
-| `firmware/` | Clock, incidents geofence alerts, forecast, flight radar, ESPHome sensors on a small TFT | On the ESP8266 device |
+| `firmware/` | Clock, incidents geofence alerts, forecast, flight radar, trains, ESPHome sensors on a small TFT | On the ESP8266 device |
 | `server/` | Aggregates + caches 20+ data feeds (weather, warnings, trains, flights, radiation, grid, seismic…) behind CORS-restricted Netlify Functions | Netlify (API only) |
 | `web/` | Desktop dashboard with the same widgets, reorderable cards, alert toasts, PWA | GitHub Pages at `https://jpdias.me/periphery/` |
 
