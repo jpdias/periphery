@@ -2267,8 +2267,7 @@ function openSettings() {
   document.getElementById("cfg-lightning-radius").value = cfg.lightningRadius;
   document.getElementById("cfg-station").value = cfg.ipStation;
   document.getElementById("cfg-station-name").value = cfg.ipStationName;
-  const upBox = document.getElementById("cfg-uptime-sites");
-  if (upBox) upBox.value = (cfg.uptimeSites || []).map((s) => `${s.label} | ${s.url}`).join("\n");
+  renderUpChips();
   const psiSym = document.getElementById("cfg-psi-symbol");
   if (psiSym) psiSym.value = cfg.psiSymbol || "";
   renderSatChips();
@@ -2293,18 +2292,6 @@ function saveSettings() {
     parseInt(document.getElementById("cfg-quake-radius").value, 10) || cfg.earthquakeRadius;
   cfg.lightningRadius =
     parseInt(document.getElementById("cfg-lightning-radius").value, 10) || cfg.lightningRadius;
-  const upBox = document.getElementById("cfg-uptime-sites");
-  if (upBox) {
-    cfg.uptimeSites = upBox.value
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => {
-        const i = l.indexOf("|");
-        if (i > 0) return { label: l.slice(0, i).trim(), url: l.slice(i + 1).trim() };
-        return { label: l, url: l };
-      });
-  }
   const psiSym = document.getElementById("cfg-psi-symbol");
   if (psiSym) cfg.psiSymbol = psiSym.value.trim() || "PSI20.LS";
   cfg.clocks = [...document.querySelectorAll(".clk-row")].map((row) => ({
@@ -2475,6 +2462,43 @@ function removeSatellite(idx) {
   renderSatChips();
 }
 
+// ---- Uptime chip picker ------------------------------------------------------
+
+function renderUpChips() {
+  const box = document.getElementById("up-chips");
+  if (!box) return;
+  box.innerHTML = "";
+  (cfg.uptimeSites || []).forEach((s, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${esc(s.label)} <span class="chip-id">${esc(s.url)}</span><button class="chip-x" data-up-idx="${i}" title="Remove" aria-label="Remove ${esc(s.label)}">&times;</button>`;
+    box.appendChild(chip);
+  });
+}
+
+function addUptimeSite() {
+  const input = document.getElementById("cfg-up-q");
+  const val = input.value.trim();
+  if (!val) return;
+  const i = val.indexOf("|");
+  const label = (i > 0 ? val.slice(0, i) : val).trim();
+  const url = (i > 0 ? val.slice(i + 1) : val).trim();
+  if (!label || !url) return;
+  if (!cfg.uptimeSites) cfg.uptimeSites = [];
+  if (cfg.uptimeSites.some((s) => s.url === url)) {
+    input.value = "";
+    return;
+  }
+  cfg.uptimeSites.push({ label, url });
+  input.value = "";
+  renderUpChips();
+}
+
+function removeUptimeSite(idx) {
+  cfg.uptimeSites.splice(idx, 1);
+  renderUpChips();
+}
+
 // Tooltip system: show/hide #tip on elements with data-tip attribute.
 function initTooltips() {
   const tip = document.getElementById("tip");
@@ -2548,6 +2572,17 @@ function wireEvents() {
   document.getElementById("sat-chips").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-sat-idx]");
     if (btn) removeSatellite(parseInt(btn.dataset.satIdx, 10));
+  });
+  document.getElementById("add-up-btn").addEventListener("click", addUptimeSite);
+  document.getElementById("cfg-up-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addUptimeSite();
+    }
+  });
+  document.getElementById("up-chips").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-up-idx]");
+    if (btn) removeUptimeSite(parseInt(btn.dataset.upIdx, 10));
   });
   // Delegated: handles both static sections and dynamically created clock rows.
   document.getElementById("settings-panel").addEventListener("change", (e) => {

@@ -425,8 +425,12 @@
         <input type="checkbox" class="w-toggle" data-widget="uptime" aria-label="Show Uptime">
       </div>
       <div class="wcfg">
-        <label>One per line: label | url
-          <textarea id="cfg-uptime-sites" rows="5" spellcheck="false" placeholder="Home | http://192.168.1.1&#10;Open-Meteo | https://api.open-meteo.com"></textarea>
+        <div id="up-chips" class="chip-list"></div>
+        <label>Add monitor (label | url)
+          <div class="row-grow">
+            <input type="text" id="cfg-up-q" placeholder="e.g. Open-Meteo | https://api.open-meteo.com">
+            <button id="add-up-btn" class="ghost">Add</button>
+          </div>
         </label>
       </div>
     </section>

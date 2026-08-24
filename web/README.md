@@ -52,6 +52,8 @@ cd ../server && npm run dev:light   # serves web/public + API on :8080
   widgets dim with reduced opacity and show a "hidden" tag.
 - **Satellite chip picker**: add/remove satellites by name + NORAD ID in the ⚙
   settings. Default: ISS, Tiangong, Hubble. Chips replace the old textarea.
+- **Uptime chip picker**: add/remove monitors by label + URL in the ⚙ settings.
+  Default: Open-Meteo, NOAA SWPC, USGS, APA. Chips replace the old textarea.
 - **Market index (PSI)**: configurable Yahoo Finance symbol — tracks PSI-20
   (Lisbon), S&P 500, Dow, Nasdaq, or any ticker. Title updates dynamically.
 - **Loading spinners**: per-card spinner ring while data is fetching; global topbar
