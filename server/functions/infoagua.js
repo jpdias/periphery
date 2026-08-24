@@ -7,19 +7,19 @@ import { upstreamJson, toQuery, haversineKm } from "./utils.js";
 // Map the geometry layer's basin names (SNIRH-style) to InfoÁgua's basin rows.
 // Basins with no InfoÁgua row (MINHO/ÂNCORA) are skipped in the ranking.
 export const GEOM_ALIAS = {
-  "ARADE": "Arade",
-  "AVE": "Ave",
+  ARADE: "Arade",
+  AVE: "Ave",
   "AVE/LEÇA": "Ave",
   "CÁVADO/RIBEIRAS COSTEIRAS": "Cávado",
-  "DOURO": "Douro",
-  "GUADIANA": "Guadiana",
-  "LIMA": "Lima",
-  "MIRA": "Mira",
-  "MONDEGO": "Mondego",
+  DOURO: "Douro",
+  GUADIANA: "Guadiana",
+  LIMA: "Lima",
+  MIRA: "Mira",
+  MONDEGO: "Mondego",
   "RIBEIRAS DO ALENTEJO": "Ribeiras do Alentejo",
   "RIBEIRAS DO OESTE": "Ribeiras do Oeste",
-  "SADO": "Sado",
-  "TEJO": "Tejo",
+  SADO: "Sado",
+  TEJO: "Tejo",
   "VOUGA/RIBEIRAS COSTEIRAS": "Vouga",
 };
 
@@ -40,7 +40,7 @@ export async function fetchInfoaguaPage(url) {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
         "Cache-Control": "no-cache",
       },
@@ -65,7 +65,9 @@ export function extractVar(html, name) {
   const open = html[i];
   const close = open === "{" ? "}" : open === "[" ? "]" : null;
   if (!close) return null;
-  let depth = 0, inStr = false, esc = false;
+  let depth = 0,
+    inStr = false,
+    esc = false;
   for (let j = i; j < html.length; j++) {
     const c = html[j];
     if (inStr) {
@@ -74,7 +76,10 @@ export function extractVar(html, name) {
       else if (c === '"') inStr = false;
       continue;
     }
-    if (c === '"') { inStr = true; continue; }
+    if (c === '"') {
+      inStr = true;
+      continue;
+    }
     if (c === open) depth++;
     else if (c === close) {
       depth--;
@@ -149,8 +154,10 @@ export async function fetchInfoaguaAlerts(base, secaPath, cheiasPath) {
   const droughtMap = extractVar(seca.html, "DATA_AlertsMap");
   const floodMap = extractVar(cheias.html, "DATA_AlertsMap");
   const drought = Array.isArray(droughtMap) ? droughtMap : null;
-  const floods = Array.isArray(floodMap) ? floodMap : floodMap && typeof floodMap === "object"
-    ? Object.values(floodMap)
-    : null;
+  const floods = Array.isArray(floodMap)
+    ? floodMap
+    : floodMap && typeof floodMap === "object"
+      ? Object.values(floodMap)
+      : null;
   return { drought, floods };
 }

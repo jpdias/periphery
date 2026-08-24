@@ -13,7 +13,7 @@
 static const uint16_t INC_PORT = 443;
 static const unsigned long INC_INTERVAL = 900000;  // 15 min refresh (TLS is heap-heavy)
 static const unsigned long INC_RETRY = 30000;      // quick retry after a defer/fail
-static const uint32_t INC_MIN_HEAP = 8192;          // streaming parse: ~5-6KB contiguous is enough
+static const uint32_t INC_MIN_HEAP = 12288;          // streaming parse: ~5-6KB contiguous is enough
 
 static IncidentData gData;
 static bool gUpdated = false;
@@ -205,6 +205,7 @@ static void parse(Stream &s) {
   gData.lastUpdated = time_utc_now();
   gData.lastOk = true;
   gUpdated = true;
+  netsched_record_success();
   mlog.printf("[INC] %d incidents\n", n);
 }
 

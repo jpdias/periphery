@@ -23,13 +23,13 @@ export default async function handler(event) {
     `${SWPC_BASE}/json/planetary_k_index_1m.json`,
   ];
 
-  const results = await Promise.all(urls.map(u => upstreamJson(u)));
-  const bad = results.find(r => r.status !== 200 || !r.body);
+  const results = await Promise.all(urls.map((u) => upstreamJson(u)));
+  const bad = results.find((r) => r.status !== 200 || !r.body);
   if (bad) {
     return fail(502, "Upstream SWPC request failed", { upstreamStatus: bad.status });
   }
 
-  const [flares, background, kp] = results.map(r => r.body);
+  const [flares, background, kp] = results.map((r) => r.body);
 
   const flare = flares[flares.length - 1] || {};
   const bgEntry = background[background.length - 1] || {};
@@ -60,7 +60,7 @@ export default async function handler(event) {
   if (hasLoc) {
     const sun = solarPosition(lat, lon, new Date());
     data.location = {
-      is_day: sun.elevation > -0.833,      // sun up (incl. refr. horizon)
+      is_day: sun.elevation > -0.833, // sun up (incl. refr. horizon)
       sun_elevation: round1(sun.elevation),
       geomagnetic_latitude: round1(geomagneticLat(lat, lon)),
     };
@@ -78,7 +78,9 @@ export default async function handler(event) {
   return ok(data, { ttl: SOLAR_TTL });
 }
 
-function round1(v) { return Math.round(v * 10) / 10; }
+function round1(v) {
+  return Math.round(v * 10) / 10;
+}
 
 // Convert X-ray flux (W/m2) to a GOES flare letter class.
 function classFromFlux(flux) {
@@ -114,32 +116,45 @@ function solarPosition(lat, lon, date) {
   const rad = Math.PI / 180;
   const doy = dayOfYear(date);
   const utcH = date.getUTCHours() + date.getUTCMinutes() / 60;
-  const gamma = (2 * Math.PI / 365) * (doy - 1 + (utcH - 12) / 24);
-  const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
-  const hourAngle = 15 * (utcH + lon / 15 - 12) * rad;   // solar time
-  const elev = Math.asin(
-    Math.sin(lat * rad) * Math.sin(decl) +
-    Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle),
-  ) / rad;
+  const gamma = ((2 * Math.PI) / 365) * (doy - 1 + (utcH - 12) / 24);
+  const decl =
+    0.006918 -
+    0.399912 * Math.cos(gamma) +
+    0.070257 * Math.sin(gamma) -
+    0.006758 * Math.cos(2 * gamma) +
+    0.000907 * Math.sin(2 * gamma) -
+    0.002697 * Math.cos(3 * gamma) +
+    0.00148 * Math.sin(3 * gamma);
+  const hourAngle = 15 * (utcH + lon / 15 - 12) * rad; // solar time
+  const elev =
+    Math.asin(
+      Math.sin(lat * rad) * Math.sin(decl) +
+        Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle),
+    ) / rad;
   return { elevation: elev };
 }
 
 function dayOfYear(date) {
   const start = Date.UTC(date.getUTCFullYear(), 0, 1);
-  return Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000) + 1;
+  return (
+    Math.floor(
+      (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000,
+    ) + 1
+  );
 }
 
 // Geomagnetic latitude via the centered-dipole approximation (north pole at
 // ~80.65N, 72.68W for epoch ~2025).
 function geomagneticLat(lat, lon) {
   const rad = Math.PI / 180;
-  const poleLat = 80.65, poleLon = -72.68;
-  const phi = rad * lat, lam = rad * lon;
-  const phiP = rad * poleLat, lamP = rad * poleLon;
-  const cosColat = Math.sin(phi) * Math.sin(phiP)
-    + Math.cos(phi) * Math.cos(phiP) * Math.cos(lam - lamP);
+  const poleLat = 80.65,
+    poleLon = -72.68;
+  const phi = rad * lat,
+    lam = rad * lon;
+  const phiP = rad * poleLat,
+    lamP = rad * poleLon;
+  const cosColat =
+    Math.sin(phi) * Math.sin(phiP) + Math.cos(phi) * Math.cos(phiP) * Math.cos(lam - lamP);
   return 90 - Math.acos(Math.max(-1, Math.min(1, cosColat))) / rad;
 }
 

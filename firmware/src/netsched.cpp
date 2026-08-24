@@ -12,6 +12,19 @@
 static bool gGranted[NS_COUNT] = {false};
 static int gCursor = 0;
 
+// Cooldown between consecutive fetchers: gives freed TLS buffers time to
+// coalesce so the next fetcher starts from a less-fragmented heap.
+static const unsigned long COOLDOWN_MS = 500;
+static unsigned long cooldownUntil = 0;
+
+// Minimum contiguous heap required before any new TLS fetch can start.
+static const uint32_t SCHED_MIN_HEAP = 10240;
+
+// Consecutive failure counter. If every fetcher keeps failing (heap too low,
+// network down, etc.), reboot the device instead of spinning forever.
+static int consecutiveFails = 0;
+static const int MAX_CONSECUTIVE_FAILS = 6;
+
 static bool any_busy() {
   for (int i = 0; i < NS_COUNT; i++) {
     if (gGranted[i]) return true;
@@ -48,6 +61,8 @@ static bool slot_due(NS_Slot s) {
 
 void netsched_begin() {
   gCursor = 0;
+  cooldownUntil = 0;
+  consecutiveFails = 0;
   for (int i = 0; i < NS_COUNT; i++) gGranted[i] = false;
 }
 
@@ -55,21 +70,48 @@ bool netsched_can_start(NS_Slot s) {
   if (gGranted[s]) return true;            // already ours; keep driving
   if (any_busy()) return false;            // a fetch is in flight; no new starts
   if (s != gCursor) return false;          // not this slot's turn yet
+  // Heap guard: refuse if not enough contiguous free memory for TLS buffers +
+  // ArduinoJson working doc. The caller will defer and retry next loop.
+  if (ESP.getMaxFreeBlockSize() < SCHED_MIN_HEAP) {
+    mlog.printf("[SCHED] %s low heap blk=%u, deferring\n", slot_name(s),
+                (unsigned)ESP.getMaxFreeBlockSize());
+    return false;
+  }
+  // Cooldown: don't chain fetchers back-to-back; let freed TLS buffers coalesce.
+  if (millis() < cooldownUntil) return false;
   gGranted[s] = true;
   mlog.printf("[SCHED] %s start\n", slot_name(s));
   return true;
 }
 
 void netsched_done(NS_Slot s) {
-  if (gGranted[s]) {
+  bool wasGranted = gGranted[s];
+  if (wasGranted) {
     gGranted[s] = false;
     mlog.printf("[SCHED] %s done\n", slot_name(s));
   }
   gCursor = (s + 1) % NS_COUNT;
+  // Start the cooldown window for the next fetcher.
+  if (wasGranted) cooldownUntil = millis() + COOLDOWN_MS;
+  // Track consecutive complete rounds where every slot failed.
+  if (!wasGranted) return;
+  consecutiveFails++;
+  if (consecutiveFails >= MAX_CONSECUTIVE_FAILS * NS_COUNT) {
+    mlog.printf("[SCHED] %d consecutive failures, rebooting\n", consecutiveFails);
+    delay(200);
+    ESP.restart();
+  }
+}
+
+void netsched_record_success() {
+  consecutiveFails = 0;
 }
 
 void netsched_advance() {
   if (any_busy()) return;                  // never move the cursor mid-fetch
+  if (millis() < cooldownUntil) return;    // respect cooldown
+  // Heap guard: don't start a new fetch if fragmented.
+  if (ESP.getMaxFreeBlockSize() < SCHED_MIN_HEAP) return;
   for (int i = 0; i < NS_COUNT; i++) {
     NS_Slot c = (NS_Slot)((gCursor + i) % NS_COUNT);
     if (slot_due(c)) { gCursor = (int)c; return; }

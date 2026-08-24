@@ -1,4 +1,15 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, rawResponse, rememberGood, staleGood, cachedFetch } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  rawResponse,
+  rememberGood,
+  staleGood,
+  cachedFetch,
+} from "./utils.js";
 import { TRAIN_HOST, TRAIN_PATH, TRAIN_SVC, TRAIN_UA, TRAIN_TTL, TRAIN_WINDOW_H } from "./env.js";
 
 export default async function handler(event) {
@@ -61,17 +72,21 @@ export default async function handler(event) {
     return fail(502, "Upstream trains request failed");
   }
 
-  const all = await cachedFetch(`trains:${params.station}:${date}:${start}:${end}`, TRAIN_TTL * 1000, async () => {
-    const merged = [];
-    for (const seg of segments) {
-      const url = `https://${TRAIN_HOST}${TRAIN_PATH}/partidas-chegadas/${params.station}/${seg.date}%20${seg.start}/${seg.date}%20${seg.end}/${TRAIN_SVC}`;
-      const { status, body } = await upstreamJson(url, {
-        headers: { "User-Agent": TRAIN_UA, Accept: "application/json" },
-      });
-      if (status === 200 && body && Array.isArray(body.response)) merged.push(...body.response);
-    }
-    return merged.length ? merged : null;
-  });
+  const all = await cachedFetch(
+    `trains:${params.station}:${date}:${start}:${end}`,
+    TRAIN_TTL * 1000,
+    async () => {
+      const merged = [];
+      for (const seg of segments) {
+        const url = `https://${TRAIN_HOST}${TRAIN_PATH}/partidas-chegadas/${params.station}/${seg.date}%20${seg.start}/${seg.date}%20${seg.end}/${TRAIN_SVC}`;
+        const { status, body } = await upstreamJson(url, {
+          headers: { "User-Agent": TRAIN_UA, Accept: "application/json" },
+        });
+        if (status === 200 && body && Array.isArray(body.response)) merged.push(...body.response);
+      }
+      return merged.length ? merged : null;
+    },
+  );
 
   if (!all) {
     return fail(502, "Upstream trains request failed");
@@ -85,7 +100,7 @@ export default async function handler(event) {
     let nextMs = Infinity;
     for (const tbl of all) {
       if ((tbl.TipoPedido | 0) !== 1) continue;
-      for (const el of (tbl.NodesComboioTabelsPartidasChegadas || [])) {
+      for (const el of tbl.NodesComboioTabelsPartidasChegadas || []) {
         if (el.ComboioPassou) continue;
         const m = /\/Date\((\d+)/.exec(el.DataHoraPartidaChegada_ToOrderByi || "");
         if (!m) continue;

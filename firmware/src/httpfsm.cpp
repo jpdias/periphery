@@ -68,8 +68,18 @@ void HttpFsm::tick() {
       }
       break;
 
-    case P_READ:
-      while (_client->available()) _body += (char)_client->read();
+    case P_READ: {
+      // Read in chunks to reduce String reallocations and heap fragmentation.
+      int avail = _client->available();
+      if (avail > 0) {
+        if (avail > 256) avail = 256;
+        size_t oldLen = _body.length();
+        _body.reserve(oldLen + avail + 64);
+        for (int i = 0; i < avail; i++) {
+          if (!_client->available()) break;
+          _body += (char)_client->read();
+        }
+      }
       if (!_client->connected() && !_client->available()) {
         _client->stop();
         _status = DONE;
@@ -77,6 +87,7 @@ void HttpFsm::tick() {
         fail("read stall");
       }
       break;
+    }
   }
 }
 

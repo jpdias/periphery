@@ -1,4 +1,12 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  haversineKm,
+} from "./utils.js";
 import { USGS_BASE, USGS_FEED, EARTHQUAKE_TTL, EARTHQUAKE_MAX } from "./env.js";
 
 // Recent earthquakes from the USGS GeoJSON feed, filtered to a radius around
@@ -24,7 +32,7 @@ export default async function handler(event) {
   }
 
   const quakes = (body.features || [])
-    .map(f => {
+    .map((f) => {
       const p = f.properties || {};
       const [lonq, latq, depth] = f.geometry?.coordinates || [];
       return {
@@ -35,15 +43,18 @@ export default async function handler(event) {
         distance_km: Math.round(haversineKm(lat, lon, latq, lonq)),
       };
     })
-    .filter(q => q.mag != null && q.distance_km <= radius)
+    .filter((q) => q.mag != null && q.distance_km <= radius)
     .sort((a, b) => b.mag - a.mag)
     .slice(0, EARTHQUAKE_MAX);
 
-  return ok({
-    source: "USGS",
-    feed: USGS_FEED,
-    count: quakes.length,
-    radius_km: radius,
-    quakes,
-  }, { ttl: EARTHQUAKE_TTL });
+  return ok(
+    {
+      source: "USGS",
+      feed: USGS_FEED,
+      count: quakes.length,
+      radius_km: radius,
+      quakes,
+    },
+    { ttl: EARTHQUAKE_TTL },
+  );
 }

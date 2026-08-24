@@ -1,4 +1,12 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, rawResponse } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  rawResponse,
+} from "./utils.js";
 import { TRAIN_HOST, TRAIN_PATH, TRAIN_UA } from "./env.js";
 
 // GET /api/stations?q=<name> -> station search proxy for the IP trains API.

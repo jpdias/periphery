@@ -1,17 +1,31 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamText, upstreamJson, toQuery } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamText,
+  upstreamJson,
+  toQuery,
+} from "./utils.js";
 import { CELESTRAK_BASE, TLE_FALLBACK_BASE, SAT_TTL, SAT_DEFAULTS } from "./env.js";
 import {
-  twoline2satrec, propagate, eciToEcf, ecfToLookAngles,
-  degreesToRadians, radiansToDegrees, gstime,
+  twoline2satrec,
+  propagate,
+  eciToEcf,
+  ecfToLookAngles,
+  degreesToRadians,
+  radiansToDegrees,
+  gstime,
 } from "satellite.js";
 
 // Satellite tracker: fetches TLEs from Celestrak for a configurable NORAD-ID
 // list (defaults: ISS, Tiangong, Hubble) and computes the next ground passes
 // over the observer using SGP4 (satellite.js). Only overhead passes that reach
 // a minimum elevation are reported — a pass is rise..set with a peak elevation.
-const MIN_ELEV = 10;        // deg — ignore grazing passes
-const WINDOW_H = 48;        // look ahead
-const STEP_MS = 60 * 1000;  // propagation step (minute resolution is plenty)
+const MIN_ELEV = 10; // deg — ignore grazing passes
+const WINDOW_H = 48; // look ahead
+const STEP_MS = 60 * 1000; // propagation step (minute resolution is plenty)
 
 function elevationAt(satrec, observerGd, date) {
   const pv = propagate(satrec, date);
@@ -30,7 +44,10 @@ function findPasses(satrec, observerGd, start, hours) {
     const elev = elevationAt(satrec, observerGd, d);
     if (elev >= MIN_ELEV) {
       if (!cur) cur = { rise: d, maxElev: elev, maxTime: d };
-      else if (elev > cur.maxElev) { cur.maxElev = elev; cur.maxTime = d; }
+      else if (elev > cur.maxElev) {
+        cur.maxElev = elev;
+        cur.maxTime = d;
+      }
     } else if (cur) {
       cur.set = d;
       cur.duration_min = Math.round((cur.set - cur.rise) / 60000);
@@ -53,18 +70,22 @@ async function fetchTle(noradId) {
     const q = toQuery({ CATNR: noradId, FORMAT: "TLE" });
     const { status, body } = await upstreamText(`${CELESTRAK_BASE}?${q}`, { timeoutMs: 4000 });
     if (status === 200 && body) {
-      const lines = body.split("\n").map(l => l.trimEnd());
-      const tle = lines.filter(l => /^[12] /.test(l));
+      const lines = body.split("\n").map((l) => l.trimEnd());
+      const tle = lines.filter((l) => /^[12] /.test(l));
       if (tle.length >= 2) return { line1: tle[0], line2: tle[1] };
     }
-  } catch { /* fall through to mirror */ }
+  } catch {
+    /* fall through to mirror */
+  }
 
   try {
     const { status, body } = await upstreamJson(`${TLE_FALLBACK_BASE}/${noradId}`);
     if (status === 200 && body && body.line1 && body.line2) {
       return { line1: body.line1, line2: body.line2 };
     }
-  } catch { /* no TLE available */ }
+  } catch {
+    /* no TLE available */
+  }
 
   return null;
 }
@@ -83,8 +104,13 @@ export default async function handler(event) {
 
   let sats = SAT_DEFAULTS;
   if (params.sats) {
-    try { sats = JSON.parse(params.sats); } catch { return fail(400, "sats must be a JSON array of {id,name}"); }
-    if (!Array.isArray(sats) || !sats.length) return fail(400, "sats must be a non-empty JSON array");
+    try {
+      sats = JSON.parse(params.sats);
+    } catch {
+      return fail(400, "sats must be a JSON array of {id,name}");
+    }
+    if (!Array.isArray(sats) || !sats.length)
+      return fail(400, "sats must be a non-empty JSON array");
   }
 
   const observerGd = {
@@ -96,28 +122,30 @@ export default async function handler(event) {
   const now = new Date();
   const results = [];
 
-  await Promise.all(sats.slice(0, 12).map(async s => {
-    const tle = await fetchTle(String(s.id));
-    if (!tle) {
-      results.push({ id: s.id, name: s.name || s.id, error: "no TLE" });
-      return;
-    }
-    const satrec = twoline2satrec(tle.line1, tle.line2);
-    const passes = findPasses(satrec, observerGd, now, WINDOW_H);
-    const next = passes.map(p => ({
-      rise: p.rise.toISOString(),
-      max_elev: Math.round(p.maxElev),
-      culmination: p.maxTime.toISOString(),
-      set: p.set.toISOString(),
-      duration_min: p.duration_min,
-    }));
-    results.push({
-      id: s.id,
-      name: s.name || s.id,
-      next: next[0] || null,
-      passes: next.slice(0, 3),
-    });
-  }));
+  await Promise.all(
+    sats.slice(0, 12).map(async (s) => {
+      const tle = await fetchTle(String(s.id));
+      if (!tle) {
+        results.push({ id: s.id, name: s.name || s.id, error: "no TLE" });
+        return;
+      }
+      const satrec = twoline2satrec(tle.line1, tle.line2);
+      const passes = findPasses(satrec, observerGd, now, WINDOW_H);
+      const next = passes.map((p) => ({
+        rise: p.rise.toISOString(),
+        max_elev: Math.round(p.maxElev),
+        culmination: p.maxTime.toISOString(),
+        set: p.set.toISOString(),
+        duration_min: p.duration_min,
+      }));
+      results.push({
+        id: s.id,
+        name: s.name || s.id,
+        next: next[0] || null,
+        passes: next.slice(0, 3),
+      });
+    }),
+  );
 
   results.sort((a, b) => {
     if (a.next && b.next) return a.next.rise.localeCompare(b.next.rise);
@@ -139,11 +167,14 @@ export default async function handler(event) {
     ttl = Math.max(60, Math.min(secs, 12 * 3600));
   }
 
-  return ok({
-    source: "Celestrak + SGP4",
-    observer: { lat, lon },
-    min_elev: MIN_ELEV,
-    window_h: WINDOW_H,
-    satellites: results,
-  }, { ttl });
+  return ok(
+    {
+      source: "Celestrak + SGP4",
+      observer: { lat, lon },
+      min_elev: MIN_ELEV,
+      window_h: WINDOW_H,
+      satellites: results,
+    },
+    { ttl },
+  );
 }

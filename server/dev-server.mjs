@@ -66,10 +66,11 @@ function parseQs(url) {
   const idx = url.indexOf("?");
   const qs = idx >= 0 ? url.slice(idx + 1) : "";
   const params = {};
-  if (qs) for (const pair of qs.split("&")) {
-    const [k, v] = pair.split("=");
-    params[decodeURIComponent(k)] = decodeURIComponent(v || "");
-  }
+  if (qs)
+    for (const pair of qs.split("&")) {
+      const [k, v] = pair.split("=");
+      params[decodeURIComponent(k)] = decodeURIComponent(v || "");
+    }
   return params;
 }
 

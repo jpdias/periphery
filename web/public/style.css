@@ -58,6 +58,7 @@ body {
   letter-spacing: 1.5px;
   font-family: var(--mono);
   color: var(--text);
+  white-space: nowrap;
 }
 .brand .accent {
   color: var(--accent);
@@ -111,6 +112,21 @@ body {
 /* pulse the status dot while widget data is being fetched */
 body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba(254, 92, 53, 0.8); animation: sync-pulse 0.9s ease-in-out infinite; }
 
+/* Loading spinner ring */
+.spin-ring {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+body.syncing .spin-ring { display: block; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
 @keyframes sync-pulse {
   0%, 100% { opacity: 0.4; transform: scale(0.9); }
   50% { opacity: 1; transform: scale(1.15); }
@@ -156,6 +172,20 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 }
 .card.dragging { opacity: 0.45; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(254, 92, 53, 0.3); }
 .card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(254, 92, 53, 0.25); }
+/* Per-card loading spinner */
+.card.loading::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  z-index: 2;
+}
 /* Grafana-style grip handle in the top-right corner */
 .drag-handle {
   position: absolute;
@@ -199,11 +229,14 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
   align-items: baseline;
   gap: 8px;
   font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   /* leave room for the drag grip (18px at top-right) so it doesn't cover the
      timestamp on the right edge */
   padding-right: 24px;
 }
-.card-title .sub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px; }
+.card-title .sub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .card-title .upd {
   margin-left: auto;
   font-weight: 400;
@@ -224,6 +257,11 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
   border-left: 2px solid var(--border2);
   padding-left: 8px;
 }
+
+/* Clickable elements — set data-url to open on click */
+li[data-url] { transition: opacity 0.15s ease; }
+li[data-url]:hover { opacity: 0.75; }
+[data-url] { cursor: pointer; }
 
 /* ---- Clock ------------------------------------------------------------- */
 
@@ -248,27 +286,26 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 /* ---- Sun & Moon -------------------------------------------------------- */
 
 .sunmoon-card { grid-column: span 1; }
-.sunmoon { display: flex; flex-direction: column; gap: 10px; }
+.sunmoon { display: flex; flex-direction: column; gap: 12px; }
 .sunmoon-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--mono);
+  justify-content: space-between;
 }
-.sunmoon-row .sm-ic { font-size: 15px; color: var(--accent); text-shadow: 0 0 8px rgba(254, 92, 53, 0.5); }
-.sunmoon-row .sm-ic.dim { opacity: 0.45; color: var(--muted); text-shadow: none; }
-.sunmoon-row .sm-label { color: var(--muted); font-size: 11px; width: 28px; text-transform: uppercase; }
-.sunmoon-row span:not(.sm-ic):not(.sm-label) { margin-left: auto; color: var(--text); }
-.sunmoon-moon { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
-.moon-phase { width: 56px; height: 56px; flex: 0 0 auto; filter: drop-shadow(0 0 10px rgba(200, 200, 210, 0.25)); }
+.sunmoon-row .sm-ic { font-size: 26px; color: var(--accent); text-shadow: 0 0 8px rgba(254, 92, 53, 0.5); flex: 0 0 auto; }
+.sm-pairs { display: flex; gap: 12px; margin-left: auto; }
+.sm-pair { display: flex; align-items: center; gap: 4px; }
+.sm-arrow { color: var(--accent); font-size: 12px; opacity: 0.8; }
+.sm-arrow.dim { opacity: 0.4; }
+.sm-time { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.sunmoon-moon { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.moon-phase { width: 48px; height: 48px; flex: 0 0 auto; filter: drop-shadow(0 0 10px rgba(200, 200, 210, 0.25)); }
 .moon-label { color: var(--muted); font-size: 12px; font-family: var(--mono); }
 
 /* ---- Weather ----------------------------------------------------------- */
 
 .weather-main { display: flex; align-items: center; gap: 16px; }
-.weather-icon { font-size: 44px; line-height: 1; flex: 0 0 auto; filter: drop-shadow(0 0 12px rgba(254, 92, 53, 0.35)); }
+.weather-icon { font-size: 44px; line-height: 1; flex: 0 0 auto; filter: drop-shadow(0 0 12px rgba(254, 92, 53, 0.35)); padding: 4px 0; }
 .weather-temp {
   font-size: 44px;
   font-weight: 300;
@@ -307,7 +344,7 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 .sc4 { color: #ff9800; text-shadow: 0 0 8px rgba(255, 152, 0, 0.4); }
 .sc5 { color: var(--danger); text-shadow: 0 0 8px rgba(255, 59, 92, 0.4); }
 
-.wsvg { width: 44px; height: 44px; color: var(--accent); }
+.wsvg { width: 44px; height: 44px; color: var(--accent); overflow: visible; }
 
 /* ---- Space weather (solar) --------------------------------------------- */
 
@@ -638,7 +675,7 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 0;
+  padding: 10px 0;
   font-size: 12px;
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
@@ -1074,6 +1111,20 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 .wsec.on { border-color: rgba(254, 92, 53, 0.4); }
 /* Collapse the config fields when the section toggle is switched off. */
 .wsec:not(.on) .wcfg { display: none; }
+.wsec:not(.on) { opacity: 0.45; }
+.wsec:not(.on):hover { opacity: 0.7; }
+.wsec-hidden-tag {
+  display: none;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  background: rgba(139, 148, 158, 0.15);
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.wsec:not(.on) .wsec-hidden-tag { display: inline-block; }
 .wsec-head { display: flex; align-items: center; gap: 10px; }
 .wsec-title { font-size: 13px; font-weight: 600; flex: 1; }
 .w-toggle {
@@ -1137,6 +1188,34 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
 .btn-row button:hover { filter: brightness(1.15); }
 .btn-row.sticky-save { position: sticky; bottom: 0; background: #080c12; padding-top: 10px; margin: 0 -20px; padding-left: 20px; padding-right: 20px; border-top: 1px solid var(--border); }
 
+.units-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.units-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.units-grid select {
+  background: #0a0f16;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--mono);
+  width: 100%;
+}
+.units-grid select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(254, 92, 53, 0.2);
+}
+
 .row-grow { display: flex; gap: 8px; align-items: flex-end; }
 .row-grow .grow { flex: 1; }
 
@@ -1171,7 +1250,8 @@ body.syncing .status .dot { background: var(--accent); box-shadow: 0 0 12px rgba
   .grid { grid-template-columns: 1fr; padding: 12px; }
   .clock-card { grid-column: span 1; }
   .clock-time { font-size: 64px; }
-  .topbar { gap: 10px; padding: 10px 12px; }
+  .topbar { gap: 8px; padding: 10px 12px; min-width: 0; overflow: hidden; }
+  .brand { font-size: 16px; letter-spacing: 1px; }
   .loc-name { display: none; }
   .toasts { left: 12px; right: 12px; max-width: none; }
   .weather-grid, .solar-grid, .rad-grid, .air-grid, .ren-sources, .prop-indices { grid-template-columns: 1fr; }

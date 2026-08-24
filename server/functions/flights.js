@@ -1,5 +1,22 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, cachedFetch, rawResponse, rememberGood, staleGood } from "./utils.js";
-import { ADSB_BASE, ADSB_FALLBACK_BASE, ADSB_PATH, FLIGHTS_TTL, FLIGHT_DEFAULT_DIST } from "./env.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  cachedFetch,
+  rawResponse,
+  rememberGood,
+  staleGood,
+} from "./utils.js";
+import {
+  ADSB_BASE,
+  ADSB_FALLBACK_BASE,
+  ADSB_PATH,
+  FLIGHTS_TTL,
+  FLIGHT_DEFAULT_DIST,
+} from "./env.js";
 
 // Try each ADS-B provider in order (primary, then fallback). adsb.lol throttles
 // (429) under coincident load; adsb.fi serves the identical /api/v2 schema, so
@@ -42,8 +59,10 @@ export default async function handler(event) {
 
   // Cache keyed on the request. Upstream rate-limits (429) are not cached, but
   // a previous good response is served for the TTL while it recovers.
-  const data = await cachedFetch(`flights:${params.lat},${params.lon},${dist}`, FLIGHTS_TTL * 1000, () =>
-    aircraftUpstream(params.lat, params.lon, dist).then((up) => (up ? up.body : null))
+  const data = await cachedFetch(
+    `flights:${params.lat},${params.lon},${dist}`,
+    FLIGHTS_TTL * 1000,
+    () => aircraftUpstream(params.lat, params.lon, dist).then((up) => (up ? up.body : null)),
   );
 
   if (!data) {

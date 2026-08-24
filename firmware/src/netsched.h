@@ -11,6 +11,10 @@
 // back with netsched_done() once its whole fetch cycle finishes (success or
 // fail), which hands the turn to the next slot. netsched_advance() is called
 // once per loop to park the cursor on the next due slot.
+//
+// A cooldown period between consecutive fetchers lets freed TLS buffers
+// coalesce on the heap. A consecutive-failure counter reboots the device if
+// the network is completely broken (all slots failing in a full round).
 
 enum NS_Slot {
   NS_NET,        // netfsm        weather -> forecast -> external IP (one cycle)
@@ -37,3 +41,7 @@ void netsched_begin();
 // Called each loop: when nothing is in flight, park the cursor on the next due
 // slot so it can start at its turn. Idempotent.
 void netsched_advance();
+
+// Reset the consecutive-failure counter after a successful fetch. Call when
+// data actually arrives (parse succeeds).
+void netsched_record_success();

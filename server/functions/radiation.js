@@ -1,5 +1,26 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo, isInPortugal, toQuery } from "./utils.js";
-import { APA_GEO_BASE, RADNET_SERVICE, RADNET_TTL, RADNET_MAX, SAFECAST_BASE, SAFECAST_PATH, SAFECAST_RADIUS_KM, SAFECAST_MAX, SAFECAST_TTL } from "./env.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  apaQueryUrl,
+  nearestTo,
+  isInPortugal,
+  toQuery,
+} from "./utils.js";
+import {
+  APA_GEO_BASE,
+  RADNET_SERVICE,
+  RADNET_TTL,
+  RADNET_MAX,
+  SAFECAST_BASE,
+  SAFECAST_PATH,
+  SAFECAST_RADIUS_KM,
+  SAFECAST_MAX,
+  SAFECAST_TTL,
+} from "./env.js";
 
 // Gamma dose-rate in air. Inside Portugal we use RADNET (APA), the national
 // environmental radioactivity alert network (~31 stations measuring H*(10)
@@ -34,37 +55,42 @@ export default async function handler(event) {
     return fail(502, "Upstream RADNET request failed", { upstreamStatus: status });
   }
 
-  const feats = (body.features || []).map(f => {
-    const a = f.properties || {};
-    const c = (f.geometry || {}).coordinates || [];
-    return {
-      station: a.nome_estacao,
-      dose: a.valor,
-      unit: a.unit || a.unidade || "nSv/h",
-      state: a.estado_estacao || a.estado || null,
-      updated: a.data_hora != null ? new Date(a.data_hora).toISOString() : null,
-      lat: c[1],
-      lon: c[0],
-    };
-  }).filter(r => r.dose != null && isFinite(r.lat));
+  const feats = (body.features || [])
+    .map((f) => {
+      const a = f.properties || {};
+      const c = (f.geometry || {}).coordinates || [];
+      return {
+        station: a.nome_estacao,
+        dose: a.valor,
+        unit: a.unit || a.unidade || "nSv/h",
+        state: a.estado_estacao || a.estado || null,
+        updated: a.data_hora != null ? new Date(a.data_hora).toISOString() : null,
+        lat: c[1],
+        lon: c[0],
+      };
+    })
+    .filter((r) => r.dose != null && isFinite(r.lat));
 
   const nearest = nearestTo(lat, lon, feats);
   if (!nearest) {
     return fail(502, "No RADNET stations within range");
   }
 
-  return ok({
-    source: "APA RADNET",
-    nearest: {
-      station: nearest.station,
-      distance_km: Math.round(nearest.distance * 10) / 10,
-      dose_nsvh: nearest.dose,
-      unit: nearest.unit,
-      updated: nearest.updated,
-      status: nearest.state,
+  return ok(
+    {
+      source: "APA RADNET",
+      nearest: {
+        station: nearest.station,
+        distance_km: Math.round(nearest.distance * 10) / 10,
+        dose_nsvh: nearest.dose,
+        unit: nearest.unit,
+        updated: nearest.updated,
+        status: nearest.state,
+      },
+      stations: feats.length,
     },
-    stations: feats.length,
-  }, { ttl: RADNET_TTL });
+    { ttl: RADNET_TTL },
+  );
 }
 
 // Global fallback: nearest recent Safecast measurement, shaped like the RADNET
@@ -85,32 +111,35 @@ async function fallbackSafecast(lat, lon) {
 
   const DOSE_UNITS = new Set(["uSv/h", "nSv/h", "mSv/h", "usv/h", "nsv/h"]);
   const rows = body
-    .map(m => ({
+    .map((m) => ({
       value: Number(m.value),
       unit: m.unit || "cpm",
       updated: m.captured_at != null ? new Date(m.captured_at).toISOString() : null,
       lat: Number(m.latitude),
       lon: Number(m.longitude),
     }))
-    .filter(r => isFinite(r.value) && isFinite(r.lat) && isFinite(r.lon));
+    .filter((r) => isFinite(r.value) && isFinite(r.lat) && isFinite(r.lon));
 
-  const dose = rows.filter(r => DOSE_UNITS.has(r.unit.toLowerCase()));
+  const dose = rows.filter((r) => DOSE_UNITS.has(r.unit.toLowerCase()));
   const pool = dose.length ? dose : rows;
   const nearest = nearestTo(lat, lon, pool);
   if (!nearest) {
     return fail(502, "No Safecast measurements within range");
   }
 
-  return ok({
-    source: "Safecast",
-    nearest: {
-      station: `Safecast sensor ${Math.round(nearest.lat * 100) / 100},${Math.round(nearest.lon * 100) / 100}`,
-      distance_km: Math.round(nearest.distance * 10) / 10,
-      dose_nsvh: nearest.value,
-      unit: nearest.unit,
-      updated: nearest.updated,
-      status: "crowd-sourced",
+  return ok(
+    {
+      source: "Safecast",
+      nearest: {
+        station: `Safecast sensor ${Math.round(nearest.lat * 100) / 100},${Math.round(nearest.lon * 100) / 100}`,
+        distance_km: Math.round(nearest.distance * 10) / 10,
+        dose_nsvh: nearest.value,
+        unit: nearest.unit,
+        updated: nearest.updated,
+        status: "crowd-sourced",
+      },
+      stations: rows.length,
     },
-    stations: rows.length,
-  }, { ttl: SAFECAST_TTL });
+    { ttl: SAFECAST_TTL },
+  );
 }

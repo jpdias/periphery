@@ -1,4 +1,12 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamText, rawResponse } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamText,
+  rawResponse,
+} from "./utils.js";
 import { HORIZONS_BASE, HORIZONS_RTS_STEP, MOON_TTL } from "./env.js";
 
 // Sun + Moon rise/transit/set from the NASA JPL Horizons observer ephemeris
@@ -10,11 +18,10 @@ import { HORIZONS_BASE, HORIZONS_RTS_STEP, MOON_TTL } from "./env.js";
 // A 3-day window is requested so rise/set events near local midnight are not
 // missed regardless of the viewer's timezone offset.
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const SUN_CMD = "10";     // Sun center
-const MOON_CMD = "301";   // Moon center
+const SUN_CMD = "10"; // Sun center
+const MOON_CMD = "301"; // Moon center
 
 function isoFromHorizons(dateStr, timeStr) {
   // dateStr like "2026-Aug-07", timeStr like "05:36"
@@ -33,7 +40,10 @@ function parseRts(text, wantIllum) {
   let inBody = false;
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
-    if (line.includes("$$SOE")) { inBody = true; continue; }
+    if (line.includes("$$SOE")) {
+      inBody = true;
+      continue;
+    }
     if (line.includes("$$EOE")) break;
     if (!inBody) continue;
     const parts = line.trim().split(/\s+/);
@@ -57,8 +67,16 @@ function phaseFromIllum(illum, illumPrev) {
   const frac = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * f))) / (2 * Math.PI);
   const waning = illumPrev !== undefined && illum < illumPrev;
   const p = waning ? 1 - frac : frac;
-  const names = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous",
-                 "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
+  const names = [
+    "New Moon",
+    "Waxing Crescent",
+    "First Quarter",
+    "Waxing Gibbous",
+    "Full Moon",
+    "Waning Gibbous",
+    "Last Quarter",
+    "Waning Crescent",
+  ];
   const idx = Math.round(p * 8) % 8;
   return { phase: p, name: names[idx] };
 }
@@ -118,7 +136,7 @@ export default async function handler(event) {
 
   // First event of each type across the window; on no-rise days the moon has none.
   const first = (arr, type) => {
-    const e = arr.find(x => x.type === type);
+    const e = arr.find((x) => x.type === type);
     return e ? e.time : null;
   };
   const data = {
@@ -130,14 +148,15 @@ export default async function handler(event) {
     moonrise: first(moon, "r"),
     moonset: first(moon, "s"),
     moon_transit: first(moon, "t"),
-    moon_illumination: moon.find(x => x.type === "t")?.illum ?? moon.find(x => x.type === "r")?.illum ?? null,
+    moon_illumination:
+      moon.find((x) => x.type === "t")?.illum ?? moon.find((x) => x.type === "r")?.illum ?? null,
     sun_events: sun,
     moon_events: moon,
   };
 
   // Moon phase: use illumination trend across consecutive transit events to pick
   // waxing/waning; fall back to a date-based estimate if unavailable.
-  const transits = moon.filter(x => x.type === "t");
+  const transits = moon.filter((x) => x.type === "t");
   if (data.moon_illumination != null) {
     const prev = transits[0]?.illum;
     const cur = transits[1]?.illum ?? transits[0]?.illum;

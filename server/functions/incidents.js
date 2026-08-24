@@ -1,5 +1,23 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, toQuery, rawResponse, rememberGood, staleGood, isInPortugal } from "./utils.js";
-import { ARC_GIS_URL, ARC_GIS_TOKEN, INCIDENT_RADIUS_M, INCIDENT_MAX, INCIDENT_TTL } from "./env.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  toQuery,
+  rawResponse,
+  rememberGood,
+  staleGood,
+  isInPortugal,
+} from "./utils.js";
+import {
+  ARC_GIS_URL,
+  ARC_GIS_TOKEN,
+  INCIDENT_RADIUS_M,
+  INCIDENT_MAX,
+  INCIDENT_TTL,
+} from "./env.js";
 
 export default async function handler(event) {
   event = normalizeEvent(event);
@@ -14,11 +32,14 @@ export default async function handler(event) {
   // The fire-incidents layer only covers Portugal — return an explicit empty
   // response outside the country.
   if (!isInPortugal(Number(params.lat), Number(params.lon))) {
-    return ok({
-      type: "FeatureCollection",
-      outside_pt: true,
-      features: [],
-    }, { ttl: INCIDENT_TTL });
+    return ok(
+      {
+        type: "FeatureCollection",
+        outside_pt: true,
+        features: [],
+      },
+      { ttl: INCIDENT_TTL },
+    );
   }
 
   // Radius is optional, in km, overridable per request (mirrors flight range).
