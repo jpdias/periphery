@@ -108,6 +108,7 @@ static void finish_task(NetTask t, const String &raw) {
     if (parse_extip_body(raw, ip) && ip.length()) gExtIp = ip;
     gUpdated = true;
   }
+  netsched_record_success();
 }
 
 static void next_task() {
@@ -150,9 +151,9 @@ void netfsm_tick() {
 
   http.tick();
   if (http.done()) {
-    String raw = http.body();
+    // Parse directly from the HttpFsm's internal String (avoids a heap copy).
+    finish_task(netTask, http.body());
     http.consume();
-    finish_task(netTask, raw);
     next_task();
   } else if (http.failed()) {
     http.consume();

@@ -15,7 +15,7 @@ static const unsigned long TRAIN_INTERVAL = 300000;  // default refresh (no time
 static const unsigned long TRAIN_MIN_INTERVAL = 60000;   // never poll faster than 1/min
 static const unsigned long TRAIN_MAX_INTERVAL = 1800000; // never go stale past 30 min
 static const unsigned long TRAIN_RETRY = 30000;      // quick retry after a defer/fail
-static const uint32_t TRAIN_MIN_HEAP = 8192;         // streaming parse: ~5-6KB contiguous is enough
+static const uint32_t TRAIN_MIN_HEAP = 12288;         // streaming parse: ~5-6KB contiguous is enough
 
 // Sent to the Netlify proxy; it forwards whatever the IP API needs. Public API,
 // no secrets.
@@ -290,6 +290,7 @@ static void parse_timetable(Stream &s) {
   gData.lastOk = true;
   gUpdated = true;
   set_next_refresh();
+  netsched_record_success();
   mlog.printf("[TRN] %d departures\n", n);
 }
 

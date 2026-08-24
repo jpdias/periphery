@@ -11,7 +11,7 @@
 
 static const uint16_t FL_PORT = 443;
 static const unsigned long FL_INTERVAL = 30000;  // 30s refresh (TLS is heap-heavy)
-static const uint32_t FL_MIN_HEAP = 8192;           // streaming parse: ~5-6KB contiguous is enough
+static const uint32_t FL_MIN_HEAP = 12288;           // streaming parse: ~5-6KB contiguous is enough
 
 static FlightData gData;
 static bool gUpdated = false;
@@ -159,6 +159,7 @@ static void parse(Stream &s) {
   gData.total = total;
   gData.valid = true;
   gUpdated = true;
+  netsched_record_success();
   mlog.printf("[FLT] %d aircraft (showing %d)\n", total, n);
 }
 
