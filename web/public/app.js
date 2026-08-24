@@ -2439,8 +2439,44 @@ function renderSatChips() {
   });
 }
 
-function addSatellite() {
-  const input = document.getElementById("cfg-sat-q");
+async function searchSatellites() {
+  const q = document.getElementById("cfg-sat-q").value.trim();
+  const box = document.getElementById("sat-results");
+  if (!q) {
+    box.innerHTML = `<span class="hint">type a satellite name first</span>`;
+    return;
+  }
+  box.innerHTML = `<span class="hint">searching…</span>`;
+  try {
+    const { data } = await apiGet("satsearch", { q });
+    const arr = data.sats || [];
+    if (!arr.length) {
+      box.innerHTML = `<span class="hint">no matches — try ISS, Starlink, Hubble</span>`;
+      return;
+    }
+    box.innerHTML = "";
+    arr.forEach((s) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "stn";
+      b.textContent = `${s.name} [${s.id}]`;
+      b.onclick = () => {
+        if (!cfg.satellites) cfg.satellites = [];
+        if (!cfg.satellites.some((x) => x.id === s.id)) {
+          cfg.satellites.push({ name: s.name, id: s.id });
+          renderSatChips();
+        }
+        box.innerHTML = `<span class="hint">added ${s.name} — click Save</span>`;
+      };
+      box.appendChild(b);
+    });
+  } catch (e) {
+    box.innerHTML = `<span class="hint">search failed: ${e.message}</span>`;
+  }
+}
+
+function addSatelliteManual() {
+  const input = document.getElementById("cfg-sat-manual");
   const val = input.value.trim();
   if (!val) return;
   const i = val.indexOf("|");
@@ -2562,11 +2598,18 @@ function wireEvents() {
       searchStations();
     }
   });
-  document.getElementById("add-sat-btn").addEventListener("click", addSatellite);
+  document.getElementById("search-sat-btn").addEventListener("click", searchSatellites);
   document.getElementById("cfg-sat-q").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      addSatellite();
+      searchSatellites();
+    }
+  });
+  document.getElementById("add-sat-btn").addEventListener("click", addSatelliteManual);
+  document.getElementById("cfg-sat-manual").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addSatelliteManual();
     }
   });
   document.getElementById("sat-chips").addEventListener("click", (e) => {

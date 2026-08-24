@@ -456,9 +456,16 @@
       </div>
       <div class="wcfg">
         <div id="sat-chips" class="chip-list"></div>
-        <label>Add satellite (name | NORAD ID)
+        <label>Search by name
           <div class="row-grow">
-            <input type="text" id="cfg-sat-q" placeholder="e.g. ISS | 25544">
+            <input type="text" id="cfg-sat-q" placeholder="e.g. ISS, Starlink">
+            <button id="search-sat-btn" class="ghost">Search</button>
+          </div>
+        </label>
+        <div id="sat-results" class="stnlist"></div>
+        <label>Or add manually (name | NORAD ID)
+          <div class="row-grow">
+            <input type="text" id="cfg-sat-manual" placeholder="e.g. ISS | 25544">
             <button id="add-sat-btn" class="ghost">Add</button>
           </div>
         </label>
