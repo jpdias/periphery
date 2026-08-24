@@ -18,14 +18,17 @@ export default async function handler(event) {
   if (!isFinite(lat) || !isFinite(lon)) return fail(400, "Invalid coordinates");
 
   const inMainland = lat >= 36.95 && lat <= 42.15 && lon >= -9.55 && lon <= -6.19;
-  const inMadeira = lat >= 32.36 && lat <= 33.12 && lon >= -17.30 && lon <= -16.24;
+  const inMadeira = lat >= 32.36 && lat <= 33.12 && lon >= -17.3 && lon <= -16.24;
   const inAzores =
-    (lat >= 39.32 && lat <= 39.75 && lon >= -31.34 && lon <= -31.00) ||
-    (lat >= 38.30 && lat <= 39.10 && lon >= -28.90 && lon <= -27.00) ||
-    (lat >= 36.85 && lat <= 37.95 && lon >= -25.90 && lon <= -25.00);
+    (lat >= 39.32 && lat <= 39.75 && lon >= -31.34 && lon <= -31.0) ||
+    (lat >= 38.3 && lat <= 39.1 && lon >= -28.9 && lon <= -27.0) ||
+    (lat >= 36.85 && lat <= 37.95 && lon >= -25.9 && lon <= -25.0);
 
-  return ok({
-    in_pt: inMainland || inMadeira || inAzores,
-    region: inMainland ? "mainland" : inMadeira ? "madeira" : inAzores ? "azores" : "outside",
-  }, { ttl: 3600 });
+  return ok(
+    {
+      in_pt: inMainland || inMadeira || inAzores,
+      region: inMainland ? "mainland" : inMadeira ? "madeira" : inAzores ? "azores" : "outside",
+    },
+    { ttl: 3600 },
+  );
 }

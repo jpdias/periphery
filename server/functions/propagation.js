@@ -1,4 +1,12 @@
-import { normalizeEvent, handleOptions, ok, fail, upstreamJson, cachedFetch, upstreamText } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  upstreamJson,
+  cachedFetch,
+  upstreamText,
+} from "./utils.js";
 import { SWPC_BASE, SOLAR_TTL } from "./env.js";
 
 // Radio propagation conditions for HF bands, derived from live space weather:
@@ -21,18 +29,30 @@ export default async function handler(event) {
 
   // --- gather upstream data (cached in-process to limit polling load) ---
   const [fluxRes, kpRes, dstRes, wwv] = await Promise.all([
-    cachedFetch("prop:flux30", 3600 * 1000,
+    cachedFetch(
+      "prop:flux30",
+      3600 * 1000,
       () => upstreamJson(`${SWPC_BASE}/products/10cm-flux-30-day.json`),
-      r => r.status === 200),
-    cachedFetch("prop:kp", 300 * 1000,
+      (r) => r.status === 200,
+    ),
+    cachedFetch(
+      "prop:kp",
+      300 * 1000,
       () => upstreamJson(`${SWPC_BASE}/json/planetary_k_index_1m.json`),
-      r => r.status === 200),
-    cachedFetch("prop:dst", 600 * 1000,
+      (r) => r.status === 200,
+    ),
+    cachedFetch(
+      "prop:dst",
+      600 * 1000,
       () => upstreamJson(`${SWPC_BASE}/products/kyoto-dst.json`),
-      r => r.status === 200),
-    cachedFetch("prop:wwv", 6 * 3600 * 1000,
+      (r) => r.status === 200,
+    ),
+    cachedFetch(
+      "prop:wwv",
+      6 * 3600 * 1000,
       () => upstreamText(`${SWPC_BASE}/text/wwv.txt`),
-      t => t.status === 200),
+      (t) => t.status === 200,
+    ),
   ]);
 
   const flux = fluxRes.body?.length ? fluxRes.body[fluxRes.body.length - 1] : null;
@@ -40,9 +60,7 @@ export default async function handler(event) {
 
   const kpList = Array.isArray(kpRes.body) ? kpRes.body : [];
   const kpLast = kpList.length ? kpList[kpList.length - 1] : null;
-  const kpNow = kpLast
-    ? Number(kpLast.estimated_kp) || Number(kpLast.kp_index) || null
-    : null;
+  const kpNow = kpLast ? Number(kpLast.estimated_kp) || Number(kpLast.kp_index) || null : null;
 
   const dstRow = dstRes.body?.length ? dstRes.body[dstRes.body.length - 1] : null;
   const dst = dstRow && dstRow.dst != null ? Number(dstRow.dst) : null;
@@ -53,32 +71,36 @@ export default async function handler(event) {
   const now = new Date();
   const sun = hasLoc ? solarPosition(lat, lon, now) : null;
 
-  const gray = hasLoc && sun
-    ? grayLineState(lat, lon, now)
-    : { active: false };
+  const gray = hasLoc && sun ? grayLineState(lat, lon, now) : { active: false };
 
   const bands = computeBands({
-    sfi, kp: kpNow, a: aIndex, dst,
-    isDay: sun ? sun.elevation > -6 : null,   // civil twilight boundary
+    sfi,
+    kp: kpNow,
+    a: aIndex,
+    dst,
+    isDay: sun ? sun.elevation > -6 : null, // civil twilight boundary
   });
 
   const overall = overallQuality(bands);
 
-  return ok({
-    source: "NOAA SWPC + Kyoto Dst",
-    updated: flux?.time_tag || dstRow?.time_tag || now.toISOString(),
-    indices: {
-      sfi,
-      sfi_trend: fluxTrend(fluxRes.body),
-      a_index: aIndex,
-      kp: kpNow,
-      kp_label: kpLabel(kpNow),
-      dst,
+  return ok(
+    {
+      source: "NOAA SWPC + Kyoto Dst",
+      updated: flux?.time_tag || dstRow?.time_tag || now.toISOString(),
+      indices: {
+        sfi,
+        sfi_trend: fluxTrend(fluxRes.body),
+        a_index: aIndex,
+        kp: kpNow,
+        kp_label: kpLabel(kpNow),
+        dst,
+      },
+      gray_line: gray,
+      overall,
+      bands,
     },
-    gray_line: gray,
-    overall,
-    bands,
-  }, { ttl: SOLAR_TTL });
+    { ttl: SOLAR_TTL },
+  );
 }
 
 // ---- Data parsing ---------------------------------------------------------
@@ -95,18 +117,21 @@ function fluxTrend(list) {
   const now = Number(list[list.length - 1].flux);
   const weekAgo = Number(list[list.length - 7].flux);
   if (!isFinite(now) || !isFinite(weekAgo)) return null;
-  return { delta: Math.round((now - weekAgo) * 10) / 10, direction: now >= weekAgo ? "up" : "down" };
+  return {
+    delta: Math.round((now - weekAgo) * 10) / 10,
+    direction: now >= weekAgo ? "up" : "down",
+  };
 }
 
 // ---- Band model (rule-of-thumb, ham-lore calibrated) ----------------------
 
 const BAND_CONFIG = [
-  { band: "160m", freq: 1.8,  minSfi: 60,  night: true  },
-  { band: "80m",  freq: 3.5,  minSfi: 60,  night: true  },
-  { band: "40m",  freq: 7,    minSfi: 70,  night: null  }, // works day & night
-  { band: "20m",  freq: 14,   minSfi: 90,  night: false },
-  { band: "15m",  freq: 21,   minSfi: 110, night: false },
-  { band: "10m",  freq: 28,   minSfi: 130, night: false },
+  { band: "160m", freq: 1.8, minSfi: 60, night: true },
+  { band: "80m", freq: 3.5, minSfi: 60, night: true },
+  { band: "40m", freq: 7, minSfi: 70, night: null }, // works day & night
+  { band: "20m", freq: 14, minSfi: 90, night: false },
+  { band: "15m", freq: 21, minSfi: 110, night: false },
+  { band: "10m", freq: 28, minSfi: 130, night: false },
 ];
 
 function computeBands({ sfi, kp, a, dst, isDay }) {
@@ -114,8 +139,8 @@ function computeBands({ sfi, kp, a, dst, isDay }) {
   const k = kp ?? 0;
   const aa = a ?? 0;
 
-  return BAND_CONFIG.map(cfg => {
-    let score = 2.0;   // "fair" baseline
+  return BAND_CONFIG.map((cfg) => {
+    let score = 2.0; // "fair" baseline
 
     // Solar flux: more ionization → higher bands open.
     if (s >= 150) score += 1.5;
@@ -156,7 +181,7 @@ function qualityLabel(score) {
 
 function overallQuality(bands) {
   const weight = { closed: 0, poor: 1, fair: 2, good: 3, excellent: 4 };
-  const vals = bands.map(b => weight[b.quality]);
+  const vals = bands.map((b) => weight[b.quality]);
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
   if (avg >= 3) return { label: "Excellent", level: "excellent" };
   if (avg >= 2.2) return { label: "Good", level: "good" };
@@ -165,7 +190,9 @@ function overallQuality(bands) {
   return { label: "Closed", level: "closed" };
 }
 
-function round1(v) { return Math.round(v * 10) / 10; }
+function round1(v) {
+  return Math.round(v * 10) / 10;
+}
 
 function kpLabel(kp) {
   if (kp == null) return null;
@@ -189,38 +216,56 @@ function grayLineState(lat, lon, date) {
   const toUTC = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
 
   // NOAA approximate solar declination + equation of time.
-  const gamma = (2 * Math.PI / 365) * (doy - 1 + (toUTC - 12) / 24);
-  const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
-  const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma)
-    - 0.014615 * Math.cos(2 * gamma) - 0.040849 * Math.sin(2 * gamma));
+  const gamma = ((2 * Math.PI) / 365) * (doy - 1 + (toUTC - 12) / 24);
+  const decl =
+    0.006918 -
+    0.399912 * Math.cos(gamma) +
+    0.070257 * Math.sin(gamma) -
+    0.006758 * Math.cos(2 * gamma) +
+    0.000907 * Math.sin(2 * gamma) -
+    0.002697 * Math.cos(3 * gamma) +
+    0.00148 * Math.sin(3 * gamma);
+  const eqt =
+    229.18 *
+    (0.000075 +
+      0.001868 * Math.cos(gamma) -
+      0.032077 * Math.sin(gamma) -
+      0.014615 * Math.cos(2 * gamma) -
+      0.040849 * Math.sin(2 * gamma));
 
-  const hourAngle = 90.833;   // sunrise/sunset refr. correction
-  const cosH = (Math.cos(hourAngle * rad) - Math.sin(lat * rad) * Math.sin(decl))
-    / (Math.cos(lat * rad) * Math.cos(decl));
+  const hourAngle = 90.833; // sunrise/sunset refr. correction
+  const cosH =
+    (Math.cos(hourAngle * rad) - Math.sin(lat * rad) * Math.sin(decl)) /
+    (Math.cos(lat * rad) * Math.cos(decl));
   let half = null;
-  if (cosH >= -1 && cosH <= 1) half = Math.acos(cosH) / rad / 15;   // hours from solar noon
+  if (cosH >= -1 && cosH <= 1) half = Math.acos(cosH) / rad / 15; // hours from solar noon
 
-  const solarNoon = 12 - lon / 15 - eqt / 60;   // UTC hour
+  const solarNoon = 12 - lon / 15 - eqt / 60; // UTC hour
   const sunrise = half != null ? solarNoon - half : null;
   const sunset = half != null ? solarNoon + half : null;
 
   const nowMin = toUTC * 60;
-  const toMin = h => h == null ? null : h * 60;
+  const toMin = (h) => (h == null ? null : h * 60);
 
-  let active = false, label = "";
+  let active = false,
+    label = "";
   if (sunrise != null && sunset != null) {
-    const srMin = toMin(sunrise), ssMin = toMin(sunset);
-    const W = 45;   // ±minutes around the terminator crossing
-    if (Math.abs(nowMin - srMin) <= W) { active = true; label = `sunrise ${minToHHMM(srMin)} UTC`; }
-    else if (Math.abs(nowMin - ssMin) <= W) { active = true; label = `sunset ${minToHHMM(ssMin)} UTC`; }
-    else {
-      label = nowMin < srMin
-        ? `sunrise ${minToHHMM(srMin)} UTC`
-        : nowMin < ssMin
-          ? `sunset ${minToHHMM(ssMin)} UTC`
-          : `sunrise ${minToHHMM(srMin + 1440)} UTC`;
+    const srMin = toMin(sunrise),
+      ssMin = toMin(sunset);
+    const W = 45; // ±minutes around the terminator crossing
+    if (Math.abs(nowMin - srMin) <= W) {
+      active = true;
+      label = `sunrise ${minToHHMM(srMin)} UTC`;
+    } else if (Math.abs(nowMin - ssMin) <= W) {
+      active = true;
+      label = `sunset ${minToHHMM(ssMin)} UTC`;
+    } else {
+      label =
+        nowMin < srMin
+          ? `sunrise ${minToHHMM(srMin)} UTC`
+          : nowMin < ssMin
+            ? `sunset ${minToHHMM(ssMin)} UTC`
+            : `sunrise ${minToHHMM(srMin + 1440)} UTC`;
     }
   }
 
@@ -240,24 +285,35 @@ function solarElevation(lat, lon, date) {
   const rad = Math.PI / 180;
   const doy = dayOfYear(date);
   const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-  const gamma = (2 * Math.PI / 365) * (doy - 1 + (utcH - 12) / 24);
-  const decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma);
+  const gamma = ((2 * Math.PI) / 365) * (doy - 1 + (utcH - 12) / 24);
+  const decl =
+    0.006918 -
+    0.399912 * Math.cos(gamma) +
+    0.070257 * Math.sin(gamma) -
+    0.006758 * Math.cos(2 * gamma) +
+    0.000907 * Math.sin(2 * gamma) -
+    0.002697 * Math.cos(3 * gamma) +
+    0.00148 * Math.sin(3 * gamma);
   const hourAngle = 15 * (utcH + lon / 15 - 12) * rad;
-  return Math.asin(
-    Math.sin(lat * rad) * Math.sin(decl) +
-    Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle),
-  ) / rad;
+  return (
+    Math.asin(
+      Math.sin(lat * rad) * Math.sin(decl) +
+        Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle),
+    ) / rad
+  );
 }
 
 function dayOfYear(date) {
   const start = Date.UTC(date.getUTCFullYear(), 0, 1);
-  return Math.floor((Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000) + 1;
+  return (
+    Math.floor(
+      (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000,
+    ) + 1
+  );
 }
 
 function minToHHMM(min) {
-  const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
-  const m = Math.round(((min % 1440) + 1440) % 1440 % 60);
+  const h = Math.floor((((min % 1440) + 1440) % 1440) / 60);
+  const m = Math.round((((min % 1440) + 1440) % 1440) % 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }

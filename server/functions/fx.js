@@ -10,10 +10,15 @@ export default async function handler(event) {
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 
   const today = new Date();
-  const fmt = d => d.toISOString().slice(0, 10);
-  const symbols = FX_SYMBOLS.split(",").map(s => s.trim()).filter(Boolean).join(",");
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const symbols = FX_SYMBOLS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(",");
 
-  const cur = await upstreamJson(`${FX_BASE}/latest?base=EUR&symbols=${encodeURIComponent(symbols)}`);
+  const cur = await upstreamJson(
+    `${FX_BASE}/latest?base=EUR&symbols=${encodeURIComponent(symbols)}`,
+  );
   if (cur.status !== 200 || !cur.body || !cur.body.rates) {
     return fail(502, "Upstream Frankfurter request failed", { upstreamStatus: cur.status });
   }
@@ -35,12 +40,15 @@ export default async function handler(event) {
     };
   }
 
-  return ok({
-    source: "ECB / Frankfurter",
-    base: "EUR",
-    date: baseDate,
-    rates,
-  }, { ttl: FX_TTL });
+  return ok(
+    {
+      source: "ECB / Frankfurter",
+      base: "EUR",
+      date: baseDate,
+      rates,
+    },
+    { ttl: FX_TTL },
+  );
 }
 
 // Fetch rates for the most recent business day strictly BEFORE `afterDate`,

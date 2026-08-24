@@ -7,7 +7,7 @@
   <meta name="description" content="periphery — live dashboard of weather, incidents, trains, flights and moon phase.">
   <title>periphery</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5' fill='%23090b0f'/><polygon points='50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5' fill='none' stroke='%23fe5c35' stroke-width='7'/><path d='M34 28 L66 28 L50 74 Z' fill='none' stroke='%23ffcc00' stroke-width='5'/></svg>">
+   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 115'><polygon points='50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5' fill='none' stroke='%23fe5c35' stroke-width='8'/></svg>">
    <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,6 +20,7 @@
     </div>
     <div class="status" id="status">
       <span class="dot"></span><span id="status-text">loading…</span>
+      <span class="spin-ring" id="spin-ring"></span>
     </div>
     <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
   </header>
@@ -39,8 +40,20 @@
     <section class="card sunmoon-card" data-widget="sunmoon">
       <h2 class="card-title" data-tip="Sunrise &amp; sunset, moon phase and moon rise/set for your location">Sun &amp; Moon <span class="upd" id="upd-sunmoon"></span></h2>
       <div class="sunmoon" id="sunmoon">
-        <div class="sunmoon-row"><span class="sm-ic">☀</span><span class="sm-label">rise</span><span id="sun-rise">--:--</span><span class="sm-ic dim">↓</span><span class="sm-label">set</span><span id="sun-set">--:--</span></div>
-        <div class="sunmoon-row"><span class="sm-ic">☾</span><span class="sm-label">rise</span><span id="moon-rise">--:--</span><span class="sm-ic dim">↓</span><span class="sm-label">set</span><span id="moon-set">--:--</span></div>
+        <div class="sunmoon-row">
+          <span class="sm-ic">☀</span>
+          <div class="sm-pairs">
+            <div class="sm-pair"><span class="sm-arrow">↑</span><span class="sm-time" id="sun-rise">--:--</span></div>
+            <div class="sm-pair"><span class="sm-arrow dim">↓</span><span class="sm-time" id="sun-set">--:--</span></div>
+          </div>
+        </div>
+        <div class="sunmoon-row">
+          <span class="sm-ic">☾</span>
+          <div class="sm-pairs">
+            <div class="sm-pair"><span class="sm-arrow">↑</span><span class="sm-time" id="moon-rise">--:--</span></div>
+            <div class="sm-pair"><span class="sm-arrow dim">↓</span><span class="sm-time" id="moon-set">--:--</span></div>
+          </div>
+        </div>
         <div class="sunmoon-moon">
           <div class="moon-phase" id="moon-phase"></div>
           <div class="moon-label" id="moon-label">moon</div>
@@ -183,7 +196,7 @@
 
     <!-- Seismic (IPMA) -->
     <section class="card seismic-card" data-widget="seismic">
-      <h2 class="card-title" data-tip="Latest earthquakes from IPMA/EMSC and USGS near your location">Seismic <span class="sub" id="seismic-count"></span><span class="upd" id="upd-seismic"></span></h2>
+      <h2 class="card-title" data-tip="Latest earthquakes from EMSC near your location">Seismic <span class="sub" id="seismic-count"></span><span class="upd" id="upd-seismic"></span></h2>
       <div class="seismo-scale" id="seismo-scale">
         <span class="ss-1">&lt;2</span><span class="ss-2">2</span><span class="ss-3">3</span><span class="ss-4">4</span><span class="ss-5">5+</span>
         <i class="ss-marker" id="seismo-marker"></i>
@@ -461,37 +474,6 @@
        </div>
      </section>
 
-    <section class="side-group">
-        <h3>Units</h3>
-        <p class="hint">Choose preferred units for display</p>
-        <div class="wcfg">
-          <label>Temperature
-            <select id="cfg-temp-unit">
-              <option value="C">°C</option>
-              <option value="F">°F</option>
-            </select>
-          </label>
-          <label>Wind speed
-            <select id="cfg-wind-unit">
-              <option value="kmh">km/h</option>
-              <option value="mph">mph</option>
-            </select>
-          </label>
-          <label>Distance
-            <select id="cfg-dist-unit">
-              <option value="km">km</option>
-              <option value="mi">mi</option>
-            </select>
-          </label>
-          <label>Pressure
-            <select id="cfg-pressure-unit">
-              <option value="hPa">hPa</option>
-              <option value="inHg">inHg</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
     <section class="side-group wsec" data-widget="ren">
       <div class="wsec-head">
         <span class="wsec-title">National Grid (REN)</span>
@@ -543,6 +525,36 @@
         <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show PSI">
       </div>
       <p class="hint">PSI-20 level & change (Yahoo Finance) — Portugal only</p>
+    </section>
+
+    <section class="side-group">
+      <h3>Display Units</h3>
+      <div class="units-grid">
+        <label>Temperature
+          <select id="cfg-temp-unit">
+            <option value="C">°C</option>
+            <option value="F">°F</option>
+          </select>
+        </label>
+        <label>Wind Speed
+          <select id="cfg-wind-unit">
+            <option value="kmh">km/h</option>
+            <option value="mph">mph</option>
+          </select>
+        </label>
+        <label>Distance
+          <select id="cfg-dist-unit">
+            <option value="km">km</option>
+            <option value="mi">mi</option>
+          </select>
+        </label>
+        <label>Pressure
+          <select id="cfg-pressure-unit">
+            <option value="hPa">hPa</option>
+            <option value="inHg">inHg</option>
+          </select>
+        </label>
+      </div>
     </section>
 
     <div class="btn-row sticky-save">

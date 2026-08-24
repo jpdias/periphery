@@ -19,43 +19,49 @@ export default async function handler(event) {
   } catch {
     return fail(400, "sites must be a JSON array of {label,url}");
   }
-  if (!Array.isArray(sites) || sites.length === 0) return fail(400, "sites must be a non-empty JSON array");
+  if (!Array.isArray(sites) || sites.length === 0)
+    return fail(400, "sites must be a non-empty JSON array");
 
-  const checks = await Promise.all(sites.slice(0, 25).map(async s => {
-    const label = String(s.label || s.url || "").trim();
-    const url = String(s.url || "").trim();
-    const entry = { label: label || url, url, ok: false, status: null, ms: null, error: null };
-    if (!/^https?:\/\//i.test(url)) {
-      entry.error = "invalid url";
-      return entry;
-    }
-    for (const method of ["HEAD", "GET"]) {
-      const started = Date.now();
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-        const res = await fetch(url, { method, redirect: "follow", signal: controller.signal });
-        clearTimeout(timer);
-        entry.ms = Date.now() - started;
-        entry.status = res.status;
-        // Any HTTP response means the host is reachable; only network-level
-        // failures (DNS, refused, timeout) count as "down".
-        entry.ok = true;
-        if (res.status === 405 || res.status === 501) continue; // retry GET
-        break;
-      } catch (e) {
-        entry.ms = Date.now() - started;
-        entry.error = e.name === "AbortError" ? "timeout" : e.message;
-        break;
+  const checks = await Promise.all(
+    sites.slice(0, 25).map(async (s) => {
+      const label = String(s.label || s.url || "").trim();
+      const url = String(s.url || "").trim();
+      const entry = { label: label || url, url, ok: false, status: null, ms: null, error: null };
+      if (!/^https?:\/\//i.test(url)) {
+        entry.error = "invalid url";
+        return entry;
       }
-    }
-    return entry;
-  }));
+      for (const method of ["HEAD", "GET"]) {
+        const started = Date.now();
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+          const res = await fetch(url, { method, redirect: "follow", signal: controller.signal });
+          clearTimeout(timer);
+          entry.ms = Date.now() - started;
+          entry.status = res.status;
+          // Any HTTP response means the host is reachable; only network-level
+          // failures (DNS, refused, timeout) count as "down".
+          entry.ok = true;
+          if (res.status === 405 || res.status === 501) continue; // retry GET
+          break;
+        } catch (e) {
+          entry.ms = Date.now() - started;
+          entry.error = e.name === "AbortError" ? "timeout" : e.message;
+          break;
+        }
+      }
+      return entry;
+    }),
+  );
 
-  return ok({
-    source: "http monitor",
-    checked: checks.length,
-    down: checks.filter(c => !c.ok).map(c => c.label),
-    sites: checks,
-  }, { ttl: 30 });
+  return ok(
+    {
+      source: "http monitor",
+      checked: checks.length,
+      down: checks.filter((c) => !c.ok).map((c) => c.label),
+      sites: checks,
+    },
+    { ttl: 30 },
+  );
 }

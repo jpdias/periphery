@@ -1,4 +1,15 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, haversineKm, isInPortugal, toQuery, rawResponse } from "./utils.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  haversineKm,
+  isInPortugal,
+  toQuery,
+  rawResponse,
+} from "./utils.js";
 import { IPMA_BASE, OPEN_METEO_BASE, OPEN_METEO_PATH, FORECAST_TTL } from "./env.js";
 
 // Daily forecast. Inside Portugal we use IPMA open-data (nearest city, plus UV
@@ -13,23 +24,65 @@ const MAX_DAYS = 3; // IPMA only publishes day0..day2
 
 // Open-Meteo WMO weather_code -> forecast icon key (mirrors WMO in app.js).
 const WMO_ICON = {
-  0: "sun", 1: "sun", 2: "sun-cloud", 3: "cloud",
-  45: "fog", 48: "fog", 51: "drizzle", 53: "drizzle", 55: "drizzle",
-  56: "drizzle", 57: "drizzle", 61: "rain", 63: "rain", 65: "rain",
-  66: "rain", 67: "rain", 71: "snow", 73: "snow", 75: "snow",
-  77: "snow", 80: "showers", 81: "rain", 82: "storm", 85: "snow",
-  86: "snow", 95: "storm", 96: "storm", 99: "storm",
+  0: "sun",
+  1: "sun",
+  2: "sun-cloud",
+  3: "cloud",
+  45: "fog",
+  48: "fog",
+  51: "drizzle",
+  53: "drizzle",
+  55: "drizzle",
+  56: "drizzle",
+  57: "drizzle",
+  61: "rain",
+  63: "rain",
+  65: "rain",
+  66: "rain",
+  67: "rain",
+  71: "snow",
+  73: "snow",
+  75: "snow",
+  77: "snow",
+  80: "showers",
+  81: "rain",
+  82: "storm",
+  85: "snow",
+  86: "snow",
+  95: "storm",
+  96: "storm",
+  99: "storm",
 };
 
 const WMO_TEXT = {
-  0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast",
-  45: "Fog", 48: "Depositing rime fog", 51: "Light drizzle", 53: "Drizzle",
-  55: "Dense drizzle", 56: "Freezing drizzle", 57: "Dense freezing drizzle",
-  61: "Light rain", 63: "Rain", 65: "Heavy rain", 66: "Freezing rain",
-  67: "Heavy freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow",
-  77: "Snow grains", 80: "Light showers", 81: "Showers", 82: "Violent showers",
-  85: "Snow showers", 86: "Heavy snow showers", 95: "Thunderstorm",
-  96: "Thunderstorm with hail", 99: "Thunderstorm with hail",
+  0: "Clear",
+  1: "Mostly clear",
+  2: "Partly cloudy",
+  3: "Overcast",
+  45: "Fog",
+  48: "Depositing rime fog",
+  51: "Light drizzle",
+  53: "Drizzle",
+  55: "Dense drizzle",
+  56: "Freezing drizzle",
+  57: "Dense freezing drizzle",
+  61: "Light rain",
+  63: "Rain",
+  65: "Heavy rain",
+  66: "Freezing rain",
+  67: "Heavy freezing rain",
+  71: "Light snow",
+  73: "Snow",
+  75: "Heavy snow",
+  77: "Snow grains",
+  80: "Light showers",
+  81: "Showers",
+  82: "Violent showers",
+  85: "Snow showers",
+  86: "Heavy snow showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with hail",
+  99: "Thunderstorm with hail",
 };
 
 // Degrees (0–360) -> compass point, e.g. 328 -> "NW".
@@ -45,7 +98,8 @@ async function fallbackOpenMeteo(lat, lon) {
   const q = toQuery({
     latitude: lat,
     longitude: lon,
-    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant",
+    daily:
+      "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,wind_speed_10m_max,wind_direction_10m_dominant",
     forecast_days: 3,
     timezone: "auto",
   });
@@ -70,20 +124,41 @@ async function fallbackOpenMeteo(lat, lon) {
       uv: d.uv_index_max?.[i] ?? null,
     };
   });
-  return ok({
-    source: "Open-Meteo",
-    city: { global_id: null, distance_km: 0, lat, lon },
-    days,
-  }, { ttl: FORECAST_TTL });
+  return ok(
+    {
+      source: "Open-Meteo",
+      city: { global_id: null, distance_km: 0, lat, lon },
+      days,
+    },
+    { ttl: FORECAST_TTL },
+  );
 }
 
 // idWeatherType -> svg icon key (see svgIcon() in app.js).
 const WTYPE_ICON = {
-  1: "sun", 2: "sun-cloud", 3: "sun-cloud", 4: "cloud", 5: "cloud",
-  6: "rain", 7: "showers", 8: "rain", 9: "rain", 10: "drizzle",
-  11: "rain", 12: "rain", 13: "drizzle", 14: "rain", 15: "drizzle",
-  16: "fog", 17: "fog", 18: "snow", 19: "storm", 20: "storm",
-  21: "rain", 22: "fog", 23: "storm",
+  1: "sun",
+  2: "sun-cloud",
+  3: "sun-cloud",
+  4: "cloud",
+  5: "cloud",
+  6: "rain",
+  7: "showers",
+  8: "rain",
+  9: "rain",
+  10: "drizzle",
+  11: "rain",
+  12: "rain",
+  13: "drizzle",
+  14: "rain",
+  15: "drizzle",
+  16: "fog",
+  17: "fog",
+  18: "snow",
+  19: "storm",
+  20: "storm",
+  21: "rain",
+  22: "fog",
+  23: "storm",
 };
 
 export default async function handler(event) {
@@ -122,7 +197,8 @@ export default async function handler(event) {
   // Load all days, the weather-type table and wind-speed classes in parallel.
   const days = await Promise.all(
     Array.from({ length: MAX_DAYS }, (_, i) =>
-      upstreamJson(`${IPMA_BASE}${IPMA_DAILY_PATH}${i}.json`))
+      upstreamJson(`${IPMA_BASE}${IPMA_DAILY_PATH}${i}.json`),
+    ),
   );
   const uvRes = await upstreamJson(`${IPMA_BASE}${IPMA_UV_PATH}`);
   const wtRes = await upstreamJson(`${IPMA_BASE}${IPMA_WEATHER_TYPE_PATH}`);
@@ -157,10 +233,14 @@ export default async function handler(event) {
   if (day0.status !== 200 || !day0.body?.data?.length) {
     return fail(502, "IPMA forecast request failed", { upstreamStatus: day0.status });
   }
-  let city = null, bestDist = Infinity;
+  let city = null,
+    bestDist = Infinity;
   for (const c of day0.body.data) {
     const d = haversineKm(lat, lon, Number(c.latitude), Number(c.longitude));
-    if (d < bestDist) { bestDist = d; city = c; }
+    if (d < bestDist) {
+      bestDist = d;
+      city = c;
+    }
   }
   if (!city) return fail(502, "No IPMA forecast city found");
 
@@ -168,7 +248,7 @@ export default async function handler(event) {
   for (let i = 0; i < MAX_DAYS; i++) {
     const res = days[i];
     if (res.status !== 200 || !res.body?.data) continue;
-    const row = res.body.data.find(c => c.globalIdLocal === city.globalIdLocal);
+    const row = res.body.data.find((c) => c.globalIdLocal === city.globalIdLocal);
     if (!row) continue;
     const date = res.body.forecastDate || res.body.dataPrev || null;
     const wt = weatherTypes[row.idWeatherType] || { en: "—", pt: "—", icon: "cloud" };
@@ -187,14 +267,17 @@ export default async function handler(event) {
     });
   }
 
-  return ok({
-    source: "IPMA",
-    city: {
-      global_id: city.globalIdLocal,
-      distance_km: Math.round(bestDist),
-      lat: Number(city.latitude),
-      lon: Number(city.longitude),
+  return ok(
+    {
+      source: "IPMA",
+      city: {
+        global_id: city.globalIdLocal,
+        distance_km: Math.round(bestDist),
+        lat: Number(city.latitude),
+        lon: Number(city.longitude),
+      },
+      days: daysOut,
     },
-    days: daysOut,
-  }, { ttl: FORECAST_TTL });
+    { ttl: FORECAST_TTL },
+  );
 }

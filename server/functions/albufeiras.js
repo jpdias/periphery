@@ -8,15 +8,23 @@
 // cloud egress), infoagua.apambiente.pt is served from a separate host that
 // Netlify's cloud egress can fetch directly.
 import { normalizeEvent, handleOptions, ok, fail, cachedFetch } from "./utils.js";
-import {
-  INFOAGUA_BASE,
-  INFOAGUA_PATH,
-  ALBUF_GEOM_URL,
-  ALBUF_TTL,
-} from "./env.js";
+import { INFOAGUA_BASE, INFOAGUA_PATH, ALBUF_GEOM_URL, ALBUF_TTL } from "./env.js";
 import { fetchInfoaguaPage, extractVar, fetchDams, rankBasins } from "./infoagua.js";
 
-const INFG_MONTHS = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+const INFG_MONTHS = [
+  "JAN",
+  "FEV",
+  "MAR",
+  "ABR",
+  "MAI",
+  "JUN",
+  "JUL",
+  "AGO",
+  "SET",
+  "OUT",
+  "NOV",
+  "DEZ",
+];
 
 export default async function handler(event) {
   event = normalizeEvent(event);
@@ -45,7 +53,11 @@ export default async function handler(event) {
         fetchInfoaguaPage(url),
         hasLatLon ? fetchDams(ALBUF_GEOM_URL) : Promise.resolve([]),
       ]);
-      return { status: pageRes.status, snap: extractVar(pageRes.html, "DATA_VolumesMap"), dams: geometry };
+      return {
+        status: pageRes.status,
+        snap: extractVar(pageRes.html, "DATA_VolumesMap"),
+        dams: geometry,
+      };
     },
   );
   if (status !== 200 || !snap) {

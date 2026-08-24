@@ -1,12 +1,38 @@
-import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson, apaQueryUrl, nearestTo, isInPortugal, toQuery } from "./utils.js";
-import { APA_GEO_BASE, QAR_SERVICE, QAR_POLUENTES, AIRQUALITY_TTL, OPEN_METEO_AQ_BASE, OPEN_METEO_AQ_PATH } from "./env.js";
+import {
+  normalizeEvent,
+  handleOptions,
+  ok,
+  fail,
+  requireParams,
+  upstreamJson,
+  apaQueryUrl,
+  nearestTo,
+  isInPortugal,
+  toQuery,
+} from "./utils.js";
+import {
+  APA_GEO_BASE,
+  QAR_SERVICE,
+  QAR_POLUENTES,
+  AIRQUALITY_TTL,
+  OPEN_METEO_AQ_BASE,
+  OPEN_METEO_AQ_PATH,
+} from "./env.js";
 
 // Air quality. Inside Portugal we use APA's QualAr (per-station IQAR index 1..5
 // and per-pollutant indices). Outside Portugal we fall back to the Open-Meteo
 // air-quality API, mapping the US AQI onto the same 1..5 scale so the card
 // renders unchanged anywhere in the world.
-const AQI_BAND = aqi => (aqi == null ? null : aqi <= 50 ? 1 : aqi <= 100 ? 2 : aqi <= 150 ? 3 : aqi <= 200 ? 4 : 5);
-const AQI_CAT = ["Good", "Moderate", "Unhealthy for sensitive groups", "Unhealthy", "Very unhealthy", "Hazardous"];
+const AQI_BAND = (aqi) =>
+  aqi == null ? null : aqi <= 50 ? 1 : aqi <= 100 ? 2 : aqi <= 150 ? 3 : aqi <= 200 ? 4 : 5;
+const AQI_CAT = [
+  "Good",
+  "Moderate",
+  "Unhealthy for sensitive groups",
+  "Unhealthy",
+  "Very unhealthy",
+  "Hazardous",
+];
 
 async function fallbackOpenMeteoAq(lat, lon) {
   const q = toQuery({
@@ -29,28 +55,33 @@ async function fallbackOpenMeteoAq(lat, lon) {
     ["NO2", c.nitrogen_dioxide, "µg/m³"],
     ["SO2", c.sulphur_dioxide, "µg/m³"],
     ["CO", c.carbon_monoxide, "µg/m³"],
-  ].filter(([, v]) => v != null).map(([name, v, unit]) => ({
-    pollutant: name,
-    indexName: unit,
-    value: v,
-    alert: band != null && band >= 4,
-  }));
-  return ok({
-    source: "Open-Meteo AQI",
-    station: {
-      name: "Open-Meteo",
-      county: null,
-      region: null,
-      distance_km: 0,
-      updated: c.time != null ? new Date(c.time).toISOString() : null,
+  ]
+    .filter(([, v]) => v != null)
+    .map(([name, v, unit]) => ({
+      pollutant: name,
+      indexName: unit,
+      value: v,
+      alert: band != null && band >= 4,
+    }));
+  return ok(
+    {
+      source: "Open-Meteo AQI",
+      station: {
+        name: "Open-Meteo",
+        county: null,
+        region: null,
+        distance_km: 0,
+        updated: c.time != null ? new Date(c.time).toISOString() : null,
+      },
+      global_index: {
+        value: band,
+        label: c.us_aqi != null ? `US AQI ${c.us_aqi}` : "US AQI",
+        responsible_pollutant: null,
+      },
+      pollutants,
     },
-    global_index: {
-      value: band,
-      label: c.us_aqi != null ? `US AQI ${c.us_aqi}` : "US AQI",
-      responsible_pollutant: null,
-    },
-    pollutants,
-  }, { ttl: AIRQUALITY_TTL });
+    { ttl: AIRQUALITY_TTL },
+  );
 }
 
 export default async function handler(event) {
@@ -71,7 +102,8 @@ export default async function handler(event) {
   }
 
   const url = apaQueryUrl(APA_GEO_BASE, QAR_SERVICE, {
-    outFields: "estacao_id,estacao_nome,indice,indice_nome,poluente_responsavel_abv,data,concelho_nome,regiao_nome",
+    outFields:
+      "estacao_id,estacao_nome,indice,indice_nome,poluente_responsavel_abv,data,concelho_nome,regiao_nome",
     orderBy: "data DESC",
     limit: 300,
     withGeometry: true,
@@ -88,7 +120,7 @@ export default async function handler(event) {
     const a = f.properties || {};
     const c = (f.geometry || {}).coordinates || [];
     const id = a.estacao_id;
-    if (id == null || !byStation.has(id) && a.indice != null) {
+    if (id == null || (!byStation.has(id) && a.indice != null)) {
       byStation.set(id, {
         id,
         name: a.estacao_nome,
@@ -111,7 +143,7 @@ export default async function handler(event) {
   // fall back to the nearest station that actually reports an index.
   let station = nearest;
   if (!station.index || station.index === 0) {
-    const withIndex = [...byStation.values()].filter(s => s.index && s.index > 0);
+    const withIndex = [...byStation.values()].filter((s) => s.index && s.index > 0);
     const nearestIndexed = nearestTo(lat, lon, withIndex);
     if (nearestIndexed) station = nearestIndexed;
   }
@@ -120,7 +152,8 @@ export default async function handler(event) {
   let pollutants = [];
   const puUrl = apaQueryUrl(APA_GEO_BASE, QAR_POLUENTES, {
     where: `estacao_id = ${station.id}`,
-    outFields: "poluente_abv,indice,indice_nome,avg_display,poluente_unidade,data,hora_display,alerta",
+    outFields:
+      "poluente_abv,indice,indice_nome,avg_display,poluente_unidade,data,hora_display,alerta",
     orderBy: "data DESC",
     limit: 40,
   });
@@ -143,20 +176,23 @@ export default async function handler(event) {
     pollutants = [...seen.values()];
   }
 
-  return ok({
-    source: "APA QualAr",
-    station: {
-      name: station.name,
-      county: station.county,
-      region: station.region,
-      distance_km: Math.round(station.distance * 10) / 10,
-      updated: station.updated,
+  return ok(
+    {
+      source: "APA QualAr",
+      station: {
+        name: station.name,
+        county: station.county,
+        region: station.region,
+        distance_km: Math.round(station.distance * 10) / 10,
+        updated: station.updated,
+      },
+      global_index: {
+        value: station.index,
+        label: station.indexName,
+        responsible_pollutant: station.pollutant,
+      },
+      pollutants,
     },
-    global_index: {
-      value: station.index,
-      label: station.indexName,
-      responsible_pollutant: station.pollutant,
-    },
-    pollutants,
-  }, { ttl: AIRQUALITY_TTL });
+    { ttl: AIRQUALITY_TTL },
+  );
 }

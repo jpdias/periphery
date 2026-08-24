@@ -23,6 +23,7 @@ let cfg = {
   lightningRadius: D.lightningRadius ?? 500,
   alerts: D.alerts ?? ["incidents", "warnings"],
   units: D.units ?? { temperature: "C", wind: "kmh", distance: "km", pressure: "hPa" },
+  cardUrls: D.cardUrls ?? {},
   clocksAll: true,
 };
 
@@ -36,12 +37,19 @@ function loadConfig() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     const stored = raw ? JSON.parse(raw) : {};
+    delete stored.cardUrls;
     // Merge over the derived defaults, never replace them wholesale.
     cfg = { ...cfg, ...stored };
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 function saveConfig() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(cfg));
+  } catch {
+    /* ignore */
+  }
 }
 
 function setStatus(text, cls = "") {
@@ -51,10 +59,28 @@ function setStatus(text, cls = "") {
   document.getElementById("status-text").textContent = text;
 }
 
-// Stamp the "last updated" HH:MM:SS on a widget card after a successful refresh.
+// Stamp the "last updated" timestamp on a widget card after a successful refresh.
+// Stores epoch ms and renders as relative "time ago" (e.g. "2m ago").
+const stampTs = {};
 function stamp(widget) {
+  stampTs[widget] = Date.now();
+  updateStamp(widget);
+}
+function updateStamp(widget) {
   const el = document.getElementById(`upd-${widget}`);
-  if (el) el.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (!el) return;
+  const ts = stampTs[widget];
+  if (!ts) {
+    el.textContent = "";
+    return;
+  }
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5) el.textContent = "just now";
+  else if (sec < 60) el.textContent = `${sec}s ago`;
+  else el.textContent = `${Math.floor(sec / 60)}m ago`;
+}
+function updateAllStamps() {
+  for (const w of Object.keys(stampTs)) updateStamp(w);
 }
 
 function apiPath(widget) {
@@ -75,6 +101,8 @@ async function apiGet(widget, params = {}) {
 
   pendingLoads++;
   document.body.classList.add("syncing");
+  const card = document.querySelector(`#grid > [data-widget="${widget}"]`);
+  if (card) card.classList.add("loading");
   try {
     const url = `${apiPath(widget)}${q ? "?" + q : ""}`;
     const res = await fetch(url);
@@ -88,10 +116,13 @@ async function apiGet(widget, params = {}) {
       const entries = Object.entries(cache).sort((a, b) => b[1].ts - a[1].ts);
       const pruned = entries.slice(0, 80);
       localStorage.setItem(API_CACHE_KEY, JSON.stringify(Object.fromEntries(pruned)));
-    } catch { /* storage full or unavailable — skip caching */ }
+    } catch {
+      /* storage full or unavailable — skip caching */
+    }
 
     return json;
   } finally {
+    if (card) card.classList.remove("loading");
     if (--pendingLoads <= 0) document.body.classList.remove("syncing");
   }
 }
@@ -103,11 +134,19 @@ const API_CACHE_KEY = "periphery-api-cache";
 let pendingLoads = 0;
 
 function readApiCache() {
-  try { return JSON.parse(localStorage.getItem(API_CACHE_KEY)) || {}; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(API_CACHE_KEY)) || {};
+  } catch {
+    return {};
+  }
 }
 
 function bustApiCache() {
-  try { localStorage.removeItem(API_CACHE_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(API_CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 // Smart TTL: move a widget's freshness window to an absolute time, so it only
@@ -121,7 +160,11 @@ function touchCache(widget, params = {}, ttlMs) {
   if (hit && ttlMs > 0) {
     hit.ts = Date.now();
     hit.expires = Date.now() + ttlMs;
-    try { localStorage.setItem(API_CACHE_KEY, JSON.stringify(cache)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(API_CACHE_KEY, JSON.stringify(cache));
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -130,26 +173,26 @@ function touchCache(widget, params = {}, ttlMs) {
 // don't hammer the Netlify functions; live data (flights, lightning) refreshes
 // often. This complements the server-side Cache-Control TTLs.
 const API_TTL_MS = {
-  weather: 60 * 60_000,        // 1 h
-  forecast: 24 * 60 * 60_000,  // 1 day
+  weather: 60 * 60_000, // 1 h
+  forecast: 24 * 60 * 60_000, // 1 day
   incidents: 10 * 60_000,
   trains: 15 * 60_000,
   flights: 3 * 60_000,
-  solar: 6 * 60 * 60_000,     // 6 h — solar activity is slow-moving
-  moon: 24 * 60 * 60_000,      // sun/moon positions don't change in a day
+  solar: 6 * 60 * 60_000, // 6 h — solar activity is slow-moving
+  moon: 24 * 60 * 60_000, // sun/moon positions don't change in a day
   radiation: 30 * 60_000,
   airquality: 60 * 60_000,
-  astro: 24 * 60 * 60_000,     // meteor showers — once a day is plenty
+  astro: 24 * 60 * 60_000, // meteor showers — once a day is plenty
   uptime: 15 * 60_000,
   lightning: 3 * 60_000,
-  warnings: 12 * 60 * 60_000,  // weather warnings — twice a day is enough
+  warnings: 12 * 60 * 60_000, // weather warnings — twice a day is enough
   satellites: 30 * 60_000,
   ren: 30 * 60_000,
   seismic: 15 * 60_000,
-  fuel: 24 * 60 * 60_000,      // fuel prices — once a day
+  fuel: 24 * 60 * 60_000, // fuel prices — once a day
   albufeiras: 24 * 60 * 60_000, // reservoir storage — monthly, once a day is plenty
   fx: 12 * 60 * 60_000,
-  psi: 60 * 60_000,            // 1 h
+  psi: 60 * 60_000, // 1 h
   propagation: 12 * 60 * 60_000, // midday check is enough
   region: 24 * 60 * 60_000,
   ip: 12 * 60 * 60_000,
@@ -158,7 +201,9 @@ const API_TTL_MS = {
 
 // ---- Widget visibility ------------------------------------------------
 
-function widgetVisible(name) { return !(cfg.hiddenWidgets || []).includes(name); }
+function widgetVisible(name) {
+  return !(cfg.hiddenWidgets || []).includes(name);
+}
 
 // ---- Alerts (tab title + toasts) ----------------------------------------
 
@@ -178,10 +223,18 @@ const ALERTABLE = [
 let titleTimer = null;
 
 function loadAlertStore() {
-  try { return JSON.parse(localStorage.getItem(ALERT_STORE_KEY)) || {}; } catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(ALERT_STORE_KEY)) || {};
+  } catch {
+    return {};
+  }
 }
 function saveAlertStore(store) {
-  try { localStorage.setItem(ALERT_STORE_KEY, JSON.stringify(store)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(ALERT_STORE_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore */
+  }
 }
 
 // Flash an alert in the browser tab title, reverting shortly after.
@@ -189,13 +242,17 @@ function flashTitle(count, label) {
   const base = "periphery";
   document.title = `⚠ ${count} new ${label.toLowerCase()} · ${base}`;
   clearTimeout(titleTimer);
-  titleTimer = setTimeout(() => { document.title = base; }, 8000);
+  titleTimer = setTimeout(() => {
+    document.title = base;
+  }, 8000);
 }
 function resetTitle() {
   clearTimeout(titleTimer);
   document.title = "periphery";
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) resetTitle(); });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) resetTitle();
+});
 window.addEventListener("focus", resetTitle);
 
 // Toast popup, dismissable; dismissing marks the alert as acknowledged so it
@@ -228,36 +285,51 @@ function trackAlerts(widget, items) {
   if (!cfg.alerts.includes(widget)) return;
   const store = loadAlertStore();
   const seen = store[widget] || (store[widget] = {});
-  const fresh = items.filter(it => !seen[it.sig]);
+  const fresh = items.filter((it) => !seen[it.sig]);
   if (!fresh.length) return;
-  fresh.forEach(it => { seen[it.sig] = { ts: Date.now(), dismissed: false }; });
+  fresh.forEach((it) => {
+    seen[it.sig] = { ts: Date.now(), dismissed: false };
+  });
   saveAlertStore(store);
-  const label = (ALERTABLE.find(a => a[0] === widget) || [widget, widget])[1];
+  const label = (ALERTABLE.find((a) => a[0] === widget) || [widget, widget])[1];
   flashTitle(fresh.length, label);
-  showAlertToast(widget, label, fresh.map(it => ({ sig: it.sig, text: it.text })));
+  showAlertToast(
+    widget,
+    label,
+    fresh.map((it) => ({ sig: it.sig, text: it.text })),
+  );
 }
 
 function renderAlertToggles() {
   const box = document.getElementById("alert-toggles");
   if (!box) return;
-  box.innerHTML = ALERTABLE.map(([name, label]) => `
+  box.innerHTML = ALERTABLE.map(
+    ([name, label]) => `
     <div class="wsec" data-alert="${name}">
       <div class="wsec-head">
         <span class="wsec-title">${label}</span>
         <input type="checkbox" class="w-toggle a-toggle" data-alert="${name}"
           ${cfg.alerts.includes(name) ? "checked" : ""} aria-label="Alert on ${label}">
       </div>
-    </div>`).join("");
+    </div>`,
+  ).join("");
 }
 
 function renderWidgetToggles() {
-  // Per-widget settings sections live in the sidebar. Each has a toggle in its
-  // header; config fields show/hide based on that toggle.
-  document.querySelectorAll(".wsec[data-widget]").forEach(sec => {
+  document.querySelectorAll(".wsec[data-widget]").forEach((sec) => {
     const name = sec.dataset.widget;
     const toggle = sec.querySelector(".w-toggle");
-    if (toggle) toggle.checked = widgetVisible(name);
-    sec.classList.toggle("on", widgetVisible(name));
+    const on = widgetVisible(name);
+    if (toggle) toggle.checked = on;
+    sec.classList.toggle("on", on);
+    let tag = sec.querySelector(".wsec-hidden-tag");
+    if (!tag) {
+      tag = document.createElement("span");
+      tag.className = "wsec-hidden-tag";
+      const head = sec.querySelector(".wsec-head");
+      if (head) head.appendChild(tag);
+    }
+    tag.textContent = on ? "" : "hidden";
   });
   // Global "all clocks" switch lives in the Clocks group.
   const allClocks = document.getElementById("cfg-clocks-all");
@@ -266,18 +338,31 @@ function renderWidgetToggles() {
 
 function setWidgetSection(name, on) {
   const sec = document.querySelector(`.wsec[data-widget="${name}"]`);
-  if (sec) sec.classList.toggle("on", on);
+  if (!sec) return;
+  sec.classList.toggle("on", on);
+  let tag = sec.querySelector(".wsec-hidden-tag");
+  if (!tag) {
+    tag = document.createElement("span");
+    tag.className = "wsec-hidden-tag";
+    const head = sec.querySelector(".wsec-head");
+    if (head) head.appendChild(tag);
+  }
+  tag.textContent = on ? "" : "hidden";
 }
 
 function applyWidgetVisibility() {
   // The "all clocks" switch is the master: turning it off hides every clock.
   const clocksOff = cfg.clocksAll === false;
-  document.querySelectorAll("[data-widget]").forEach(card => {
+  document.querySelectorAll("#grid > [data-widget]").forEach((card) => {
     const name = card.dataset.widget;
     let show = widgetVisible(name);
     if (clocksOff && /^clock(\d+)?$/.test(name)) show = false;
     // Portugal-only widgets don't apply when the observer is outside the country.
-    if (outsidePT && ["trains", "incidents", "warnings", "fuel", "albufeiras", "ren", "psi"].includes(name)) show = false;
+    if (
+      outsidePT &&
+      ["trains", "incidents", "warnings", "fuel", "albufeiras", "ren", "psi"].includes(name)
+    )
+      show = false;
     // Small clocks also need a configured timezone to be useful.
     const m = /^clock(\d+)$/.exec(name);
     if (m) {
@@ -293,9 +378,25 @@ function applyWidgetVisibility() {
 function applyCardOrder() {
   const grid = document.getElementById("grid");
   if (!grid || !Array.isArray(cfg.cardOrder) || !cfg.cardOrder.length) return;
-  cfg.cardOrder.forEach(name => {
+  cfg.cardOrder.forEach((name) => {
     const card = grid.querySelector(`.card[data-widget="${name}"]`);
     if (card) grid.appendChild(card);
+  });
+}
+
+// Add external link data-url to card titles for widgets with a cardUrls entry.
+function applyCardTitleLinks() {
+  document.querySelectorAll("#grid > .card[data-widget]").forEach((card) => {
+    const name = card.dataset.widget;
+    const url = resolveCardUrl(name);
+    const title = card.querySelector(".card-title");
+    if (title && url) {
+      title.dataset.url = url;
+      title.style.cursor = "pointer";
+    } else if (title) {
+      delete title.dataset.url;
+      title.style.cursor = "";
+    }
   });
 }
 
@@ -333,7 +434,8 @@ function initCardDrag() {
     return;
   }
 
-  let dragEl = null, touchId = null;
+  let dragEl = null,
+    touchId = null;
 
   const cardFromPoint = (x, y) => {
     dragEl.style.display = "none";
@@ -353,14 +455,14 @@ function initCardDrag() {
     }
   };
 
-  const onMove = e => {
+  const onMove = (e) => {
     if (!dragEl) return;
     if (touchId !== null && e.pointerId !== touchId) return;
     reorderUnder(e.clientX, e.clientY);
   };
 
   const persist = () => {
-    cfg.cardOrder = [...grid.querySelectorAll(".card")].map(c => c.dataset.widget);
+    cfg.cardOrder = [...grid.querySelectorAll(".card")].map((c) => c.dataset.widget);
     saveConfig();
     if (dragEl) {
       dragEl.classList.remove("dragging");
@@ -371,7 +473,7 @@ function initCardDrag() {
     document.body.style.cursor = "";
   };
 
-  const onDown = e => {
+  const onDown = (e) => {
     const handle = e.target.closest ? e.target.closest(".drag-handle") : null;
     if (!handle) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
@@ -383,7 +485,9 @@ function initCardDrag() {
     card.classList.add("dragging");
     card.style.zIndex = 50;
     document.body.style.cursor = "grabbing";
-    try { grid.setPointerCapture(e.pointerId); } catch {}
+    try {
+      grid.setPointerCapture(e.pointerId);
+    } catch {}
   };
 
   grid.addEventListener("pointerdown", onDown);
@@ -396,7 +500,7 @@ function initCardDrag() {
 function initHtml5Drag(grid) {
   let dragEl = null;
 
-  grid.addEventListener("dragstart", e => {
+  grid.addEventListener("dragstart", (e) => {
     const handle = e.target.closest(".drag-handle");
     if (!handle) return;
     const card = handle.closest(".card");
@@ -406,7 +510,7 @@ function initHtml5Drag(grid) {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.dataset.widget);
   });
-  grid.addEventListener("dragover", e => {
+  grid.addEventListener("dragover", (e) => {
     e.preventDefault();
     if (!dragEl) return;
     e.dataTransfer.dropEffect = "move";
@@ -418,7 +522,7 @@ function initHtml5Drag(grid) {
   });
   const done = () => {
     if (!dragEl) return;
-    cfg.cardOrder = [...grid.querySelectorAll(".card")].map(c => c.dataset.widget);
+    cfg.cardOrder = [...grid.querySelectorAll(".card")].map((c) => c.dataset.widget);
     saveConfig();
     dragEl.classList.remove("dragging");
     dragEl = null;
@@ -429,20 +533,40 @@ function initHtml5Drag(grid) {
 
 // Common IANA timezones for the small-clock dropdown.
 const TIMEZONES = [
-  "UTC", "Europe/Lisbon", "Europe/London", "Europe/Paris", "Europe/Madrid",
-  "Europe/Berlin", "Europe/Rome", "Europe/Athens", "Europe/Moscow",
-  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-  "America/Sao_Paulo", "Africa/Cairo", "Africa/Lagos", "Africa/Johannesburg",
-  "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Asia/Dubai", "Asia/Kolkata",
-  "Australia/Sydney", "Pacific/Auckland",
+  "UTC",
+  "Europe/Lisbon",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Madrid",
+  "Europe/Berlin",
+  "Europe/Rome",
+  "Europe/Athens",
+  "Europe/Moscow",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Sao_Paulo",
+  "Africa/Cairo",
+  "Africa/Lagos",
+  "Africa/Johannesburg",
+  "Asia/Tokyo",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Australia/Sydney",
+  "Pacific/Auckland",
 ];
 
 function fillTimezoneSelect(sel, current) {
   if (!sel) return;
   const emptyOpt = current ? "" : `<option value="">—</option>`;
-  sel.innerHTML = emptyOpt + TIMEZONES.map(tz =>
-    `<option value="${tz}" ${tz === current ? "selected" : ""}>${tz}</option>`
-  ).join("");
+  sel.innerHTML =
+    emptyOpt +
+    TIMEZONES.map(
+      (tz) => `<option value="${tz}" ${tz === current ? "selected" : ""}>${tz}</option>`,
+    ).join("");
   sel.value = current || "";
 }
 
@@ -521,7 +645,9 @@ function removeClockRow(row) {
 function fmtTZ(date, tz, opts) {
   try {
     return new Intl.DateTimeFormat([], { timeZone: tz, ...opts }).format(date);
-  } catch { return "--:--"; }
+  } catch {
+    return "--:--";
+  }
 }
 
 function updateSmallClocks() {
@@ -535,7 +661,8 @@ function updateSmallClocks() {
     if (!c.tz) return;
     if (label) label.textContent = c.label || `Clock ${n}`;
     time.textContent = fmtTZ(now, c.tz, { hour: "2-digit", minute: "2-digit" });
-    if (date) date.textContent = fmtTZ(now, c.tz, { weekday: "short", day: "2-digit", month: "short" });
+    if (date)
+      date.textContent = fmtTZ(now, c.tz, { weekday: "short", day: "2-digit", month: "short" });
   });
 }
 
@@ -546,7 +673,7 @@ function renderClockCards() {
   const main = document.querySelector('.card[data-widget="clock"]');
   if (!grid || !main) return;
   // Drop any stale dynamic clock cards (clock2, clock3, ...).
-  document.querySelectorAll('.card[data-widget^="clock"]').forEach(card => {
+  document.querySelectorAll('.card[data-widget^="clock"]').forEach((card) => {
     if (card !== main && /^clock\d+$/.test(card.dataset.widget)) card.remove();
   });
   cfg.clocks.forEach((c, i) => {
@@ -561,7 +688,9 @@ function renderClockCards() {
       <h2 class="card-title" data-tip="Extra clock — timezone set in settings"><span class="sc-label" id="clock${n}-label">${esc(c.label || `Clock ${n}`)}</span><span class="upd" id="upd-clock${n}"></span></h2>
       <div class="clock-time small" id="clock${n}-time">--:--</div>
       <div class="clock-date" id="clock${n}-date"></div>`;
-    const lastClock = [...grid.querySelectorAll('.card[data-widget^="clock"]:not([data-widget="clock"])')].pop();
+    const lastClock = [
+      ...grid.querySelectorAll('.card[data-widget^="clock"]:not([data-widget="clock"])'),
+    ].pop();
     (lastClock || main).after(card);
     addDragHandle(card);
   });
@@ -579,28 +708,60 @@ async function loadWeather() {
       temp != null ? `${Math.round(temp)}°` : "—";
     document.getElementById("weather-desc").textContent = wmoText(cur.weather_code);
     const d = data.daily || {};
-    const kmh = v => Math.round(v);
+    const kmh = (v) => Math.round(v);
     // Color scale helpers (green→red; low value = good unless noted).
-    const cell = (k, v, cls) => `<div class="wcell"><span class="wk">${k}</span><span class="wv${cls ? " " + cls : ""}">${v}</span></div>`;
+    const cell = (k, v, cls) =>
+      `<div class="wcell"><span class="wk">${k}</span><span class="wv${cls ? " " + cls : ""}">${v}</span></div>`;
     const hum = cur.relative_humidity_2m;
     const clouds = cur.cloud_cover;
     const windKmh = cur.wind_speed_10m;
     const gustKmh = cur.wind_gusts_10m;
     const cells = [
-      cell("Feels like", `${Math.round(convertTemperature(cur.apparent_temperature, cfg.units.temperature))}°`),
+      cell(
+        "Feels like",
+        `${Math.round(convertTemperature(cur.apparent_temperature, cfg.units.temperature))}°`,
+      ),
       cell("Humidity", hum != null ? `${Math.round(hum)}%` : "—", scaleClass(hum, 30, 85)),
-      cell("Dew point", `${Math.round(convertTemperature(cur.dew_point_2m, cfg.units.temperature))}°`),
+      cell(
+        "Dew point",
+        `${Math.round(convertTemperature(cur.dew_point_2m, cfg.units.temperature))}°`,
+      ),
       cell("Clouds", clouds != null ? `${Math.round(clouds)}%` : "—", scaleClass(clouds, 15, 85)),
-      cell("Wind", windKmh != null ? `${convertWindSpeed(kmh(windKmh), cfg.units.wind)} ${cfg.units.wind === 'mph' ? 'mph' : 'km/h'}` : "—", scaleClass(kmh(windKmh), 10, 50)),
-      cell("Gusts", gustKmh != null ? `${convertWindSpeed(kmh(gustKmh), cfg.units.wind)} ${cfg.units.wind === 'mph' ? 'mph' : 'km/h'}` : "—", scaleClass(kmh(gustKmh), 15, 70)),
+      cell(
+        "Wind",
+        windKmh != null
+          ? `${convertWindSpeed(kmh(windKmh), cfg.units.wind)} ${cfg.units.wind === "mph" ? "mph" : "km/h"}`
+          : "—",
+        scaleClass(kmh(windKmh), 10, 50),
+      ),
+      cell(
+        "Gusts",
+        gustKmh != null
+          ? `${convertWindSpeed(kmh(gustKmh), cfg.units.wind)} ${cfg.units.wind === "mph" ? "mph" : "km/h"}`
+          : "—",
+        scaleClass(kmh(gustKmh), 15, 70),
+      ),
       cell("Wind dir", `${cur.wind_direction_10m}°`),
-      cell("Pressure", `${Math.round(convertPressure(cur.pressure_msl, cfg.units.pressure))} ${cfg.units.pressure === 'inHg' ? 'inHg' : 'hPa'}`),
-      cell("Visibility", `${Math.round(convertDistance(cur.visibility / 1000, cfg.units.distance))} ${cfg.units.distance === 'mi' ? 'mi' : 'km'}`),
+      cell(
+        "Pressure",
+        `${Math.round(convertPressure(cur.pressure_msl, cfg.units.pressure))} ${cfg.units.pressure === "inHg" ? "inHg" : "hPa"}`,
+      ),
+      cell(
+        "Visibility",
+        `${Math.round(convertDistance(cur.visibility / 1000, cfg.units.distance))} ${cfg.units.distance === "mi" ? "mi" : "km"}`,
+      ),
       cell("Precip", `${convertDistance(cur.precipitation, cfg.units.distance)} mm`),
     ];
-    if (d.uv_index_max?.[0] != null) cells.push(cell("UV index", d.uv_index_max[0].toFixed(1), uvClass(d.uv_index_max[0])));
+    if (d.uv_index_max?.[0] != null)
+      cells.push(cell("UV index", d.uv_index_max[0].toFixed(1), uvClass(d.uv_index_max[0])));
     if (d.precipitation_probability_max?.[0] != null)
-      cells.push(cell("Rain chance", `${Math.round(d.precipitation_probability_max[0])}%`, scaleClass(d.precipitation_probability_max[0], 15, 80)));
+      cells.push(
+        cell(
+          "Rain chance",
+          `${Math.round(d.precipitation_probability_max[0])}%`,
+          scaleClass(d.precipitation_probability_max[0], 15, 80),
+        ),
+      );
     document.getElementById("weather-grid").innerHTML = cells.join("");
     stamp("weather");
   } catch (e) {
@@ -613,20 +774,32 @@ async function loadWeather() {
 // Weather code → monochrome SVG icon (stroke-based, inherits currentColor so the
 // terminal theme stays consistent and nothing depends on emoji font support).
 const WMO = {
-  0:  { i: svgIcon("sun"), t: "Clear" },
-  1:  { i: svgIcon("sun-cloud"), t: "Mostly clear" },
-  2:  { i: svgIcon("sun-cloud"), t: "Partly cloudy" },
-  3:  { i: svgIcon("cloud"), t: "Overcast" },
-  45: { i: svgIcon("fog"), t: "Fog" }, 48: { i: svgIcon("fog"), t: "Icy fog" },
-  51: { i: svgIcon("drizzle"), t: "Drizzle" }, 53: { i: svgIcon("drizzle"), t: "Drizzle" }, 55: { i: svgIcon("drizzle"), t: "Drizzle" },
-  61: { i: svgIcon("rain"), t: "Rain" }, 63: { i: svgIcon("rain"), t: "Rain" }, 65: { i: svgIcon("rain"), t: "Heavy rain" },
-  66: { i: svgIcon("rain"), t: "Freezing rain" }, 67: { i: svgIcon("rain"), t: "Freezing rain" },
-  71: { i: svgIcon("snow"), t: "Snow" }, 73: { i: svgIcon("snow"), t: "Snow" }, 75: { i: svgIcon("snow"), t: "Heavy snow" },
+  0: { i: svgIcon("sun"), t: "Clear" },
+  1: { i: svgIcon("sun-cloud"), t: "Mostly clear" },
+  2: { i: svgIcon("sun-cloud"), t: "Partly cloudy" },
+  3: { i: svgIcon("cloud"), t: "Overcast" },
+  45: { i: svgIcon("fog"), t: "Fog" },
+  48: { i: svgIcon("fog"), t: "Icy fog" },
+  51: { i: svgIcon("drizzle"), t: "Drizzle" },
+  53: { i: svgIcon("drizzle"), t: "Drizzle" },
+  55: { i: svgIcon("drizzle"), t: "Drizzle" },
+  61: { i: svgIcon("rain"), t: "Rain" },
+  63: { i: svgIcon("rain"), t: "Rain" },
+  65: { i: svgIcon("rain"), t: "Heavy rain" },
+  66: { i: svgIcon("rain"), t: "Freezing rain" },
+  67: { i: svgIcon("rain"), t: "Freezing rain" },
+  71: { i: svgIcon("snow"), t: "Snow" },
+  73: { i: svgIcon("snow"), t: "Snow" },
+  75: { i: svgIcon("snow"), t: "Heavy snow" },
   77: { i: svgIcon("snow"), t: "Snow grains" },
-  80: { i: svgIcon("showers"), t: "Showers" }, 81: { i: svgIcon("showers"), t: "Showers" }, 82: { i: svgIcon("storm"), t: "Storm" },
-  85: { i: svgIcon("snow"), t: "Snow showers" }, 86: { i: svgIcon("snow"), t: "Snow showers" },
+  80: { i: svgIcon("showers"), t: "Showers" },
+  81: { i: svgIcon("showers"), t: "Showers" },
+  82: { i: svgIcon("storm"), t: "Storm" },
+  85: { i: svgIcon("snow"), t: "Snow showers" },
+  86: { i: svgIcon("snow"), t: "Snow showers" },
   95: { i: svgIcon("storm"), t: "Thunderstorm" },
-  96: { i: svgIcon("storm"), t: "Hail storm" }, 99: { i: svgIcon("storm"), t: "Hail storm" },
+  96: { i: svgIcon("storm"), t: "Hail storm" },
+  99: { i: svgIcon("storm"), t: "Hail storm" },
 };
 
 function svgIcon(name) {
@@ -646,12 +819,19 @@ function svgIcon(name) {
   return `<svg class="wsvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 }
 
-function wmoIcon(code) { return (WMO[code] || WMO[0]).i; }
-function wmoText(code) { return (WMO[code] || { t: "—" }).t; }
+function wmoIcon(code) {
+  return (WMO[code] || WMO[0]).i;
+}
+function wmoText(code) {
+  return (WMO[code] || { t: "—" }).t;
+}
 
 function fmtTime(iso) {
-  try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
-  catch { return iso; }
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
 }
 
 async function loadForecast() {
@@ -665,11 +845,25 @@ async function loadForecast() {
       const today = dt && dt.toDateString() === todayStr;
       const fields = [
         ["UV", d.uv != null ? `<span class="${uvClass(d.uv)}">${d.uv.toFixed(1)}</span>` : "—"],
-        ["Rain", d.precip_prob != null ? `<span class="${scaleClass(d.precip_prob, 15, 80)}">${Math.round(d.precip_prob)}%</span>` : "—"],
-        ["Wind", d.wind_dir ? `<span class="f-meta-v">${esc(d.wind_dir)}${d.wind_class ? " " + esc(d.wind_class) : ""}</span>` : (d.wind_class ? `<span>${esc(d.wind_class)}</span>` : "—")],
-      ].map(([k, v]) => `<span class="f-meta"><b>${k}</b>${v}</span>`).join("");
+        [
+          "Rain",
+          d.precip_prob != null
+            ? `<span class="${scaleClass(d.precip_prob, 15, 80)}">${Math.round(d.precip_prob)}%</span>`
+            : "—",
+        ],
+        [
+          "Wind",
+          d.wind_dir
+            ? `<span class="f-meta-v">${esc(d.wind_dir)}${d.wind_class ? " " + esc(d.wind_class) : ""}</span>`
+            : d.wind_class
+              ? `<span>${esc(d.wind_class)}</span>`
+              : "—",
+        ],
+      ]
+        .map(([k, v]) => `<span class="f-meta"><b>${k}</b>${v}</span>`)
+        .join("");
       html += `<div class="forecast-line${today ? " today" : ""}">
-        <span class="day">${today ? "Today" : (dt ? days[dt.getDay()] : `+${i}`)}</span>
+        <span class="day">${today ? "Today" : dt ? days[dt.getDay()] : `+${i}`}</span>
         <span class="ic">${svgIcon(d.weather_icon || "cloud")}</span>
         <span class="desc">${esc(d.weather_type || "—")}</span>
          <span class="hi">${Math.round(convertTemperature(d.t_max, cfg.units.temperature))}°</span>
@@ -681,10 +875,12 @@ async function loadForecast() {
     document.getElementById("forecast-row").innerHTML = html;
     const uvToday = (data.days || [])[0]?.uv;
     if (uvToday != null && uvToday >= 8) {
-      trackAlerts("uv", [{
-        sig: `uv:${uvToday.toFixed(1)}`,
-        text: `UV index ${uvToday.toFixed(1)} today — very high`,
-      }]);
+      trackAlerts("uv", [
+        {
+          sig: `uv:${uvToday.toFixed(1)}`,
+          text: `UV index ${uvToday.toFixed(1)} today — very high`,
+        },
+      ]);
     }
     stamp("forecast");
   } catch (e) {
@@ -697,7 +893,9 @@ async function loadForecast() {
 async function loadIncidents() {
   try {
     const { data } = await apiGet("incidents", {
-      lat: cfg.lat, lon: cfg.lon, radius: cfg.incidentRadius,
+      lat: cfg.lat,
+      lon: cfg.lon,
+      radius: cfg.incidentRadius,
     });
     const el = document.getElementById("incident-list");
     const countEl = document.getElementById("incident-count");
@@ -710,12 +908,16 @@ async function loadIncidents() {
     // Safety net: the upstream geofence can be trusted, but clamp anything that
     // slips through the radius so the card never shows out-of-range incidents.
     const radius = cfg.incidentRadius || 20;
-    const feats = (data.features || []).map(f => {
-      const c = f.geometry && f.geometry.coordinates;
-      const dist = Array.isArray(c) && c.length >= 2
-        ? haversineKm(cfg.lat, cfg.lon, c[1], c[0]) : Infinity;
-      return { f, dist };
-    }).filter(x => x.dist <= radius).sort((a, b) => a.dist - b.dist).map(x => x.f);
+    const feats = (data.features || [])
+      .map((f) => {
+        const c = f.geometry && f.geometry.coordinates;
+        const dist =
+          Array.isArray(c) && c.length >= 2 ? haversineKm(cfg.lat, cfg.lon, c[1], c[0]) : Infinity;
+        return { f, dist };
+      })
+      .filter((x) => x.dist <= radius)
+      .sort((a, b) => a.dist - b.dist)
+      .map((x) => x.f);
 
     if (!feats.length) {
       el.innerHTML = `<div class="empty">No incidents within ${radius} km</div>`;
@@ -723,23 +925,30 @@ async function loadIncidents() {
       stamp("incidents");
       return;
     }
-    const count = feats.filter(f => isActive(f.properties.EstadoOcorrencia)).length;
+    const count = feats.filter((f) => isActive(f.properties.EstadoOcorrencia)).length;
     if (countEl) countEl.textContent = `${feats.length} within ${radius} km · ${count} active`;
-    el.innerHTML = feats.map(f => {
-      const p = f.properties;
-      const c = f.geometry && f.geometry.coordinates;
-      const d = Array.isArray(c) && c.length >= 2
-        ? haversineKm(cfg.lat, cfg.lon, c[1], c[0]) : null;
-      return `<li>
-        <span class="con">${esc(p.Concelho || "—")}</span>
+    el.innerHTML = feats
+      .map((f) => {
+        const p = f.properties;
+        const c = f.geometry && f.geometry.coordinates;
+        const d =
+          Array.isArray(c) && c.length >= 2 ? haversineKm(cfg.lat, cfg.lon, c[1], c[0]) : null;
+        const ilat = Array.isArray(c) && c.length >= 2 ? c[1] : undefined;
+        const ilon = Array.isArray(c) && c.length >= 2 ? c[0] : undefined;
+        const li = `<span class="con">${esc(p.Concelho || "—")}</span>
         ${esc(p.Natureza || "")}
-        <span class="when">${d != null ? d.toFixed(1) + " km · " : ""}${esc(p.EstadoOcorrencia || "")}</span>
-      </li>`;
-    }).join("");
-    trackAlerts("incidents", feats.map(f => ({
-      sig: `${f.properties.Concelho}|${f.properties.Natureza}|${f.properties.EstadoOcorrencia}`,
-      text: `${f.properties.Natureza || "Incident"} · ${f.properties.Concelho || "—"} (${f.properties.EstadoOcorrencia || ""})`,
-    })));
+        <span class="when">${d != null ? d.toFixed(1) + " km · " : ""}${esc(p.EstadoOcorrencia || "")}</span>`;
+        const url = resolveCardUrl("incidents", { lat: ilat, lon: ilon });
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
+    trackAlerts(
+      "incidents",
+      feats.map((f) => ({
+        sig: `${f.properties.Concelho}|${f.properties.Natureza}|${f.properties.EstadoOcorrencia}`,
+        text: `${f.properties.Natureza || "Incident"} · ${f.properties.Concelho || "—"} (${f.properties.EstadoOcorrencia || ""})`,
+      })),
+    );
     stamp("incidents");
   } catch (e) {
     document.getElementById("incident-list").innerHTML = `<div class="empty">${e.message}</div>`;
@@ -751,8 +960,8 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
@@ -761,15 +970,30 @@ function isActive(estado) {
   return s.includes("chegada") || s.includes("ativa") || s.includes("em curso") || !s;
 }
 
-function esc(s) { return s.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])); }
+function esc(s) {
+  return s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]);
+}
+
+// Resolve a card URL template (from cfg.cardUrls) against item-level fields
+// and global cfg (lat/lon). Returns null when no template is defined.
+function resolveCardUrl(widget, item = {}) {
+  const template = cfg.cardUrls?.[widget];
+  if (!template) return null;
+  return template.replace(/\{(\w+)\}/g, (_, key) => {
+    if (key in item && item[key] != null) return item[key];
+    if (key === "lat") return cfg.lat;
+    if (key === "lon") return cfg.lon;
+    return "";
+  });
+}
 
 // ---- Trains --------------------------------------------------------------
 
 function trainWindow(shiftHours = 0) {
   const now = new Date();
-  const pad = n => String(n).padStart(2, "0");
-  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const hhmm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const pad = (n) => String(n).padStart(2, "0");
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   // Window is ~now-1h → now+3h; shifted forward when the previous window was empty.
   const start = new Date(now.getTime() - 60 * 60 * 1000 + shiftHours * 3600 * 1000);
   const end = new Date(start.getTime() + 4 * 3600 * 1000);
@@ -785,7 +1009,7 @@ function collectTrainRows(response) {
   const rows = [];
   for (const tbl of response || []) {
     if ((tbl.TipoPedido | 0) !== 1) continue;
-    for (const el2 of (tbl.NodesComboioTabelsPartidasChegadas || [])) {
+    for (const el2 of tbl.NodesComboioTabelsPartidasChegadas || []) {
       if (el2.ComboioPassou) continue;
       const dep = el2.DataHoraPartidaChegada;
       if (!dep) continue;
@@ -830,17 +1054,21 @@ async function loadTrains() {
     // Slide forward through 4h windows until we have the next 4 departures.
     // Busy stations fill up on the first window (one fetch); quiet ones take a
     // few. Cap at ~12h ahead so we never hammer the upstream.
-    const want = 4, MAX_SHIFT = 12;
-    let rows = [], seen = new Set();
+    const want = 4,
+      MAX_SHIFT = 12;
+    let rows = [],
+      seen = new Set();
     const wins = [];
     for (let shift = 0; shift <= MAX_SHIFT && rows.length < want; shift += 3) {
       const win = trainWindow(shift);
       wins.push(win);
       const { data } = await apiGet("trains", {
         station: cfg.ipStation,
-        date: win.date, start: win.start, end: win.end,
+        date: win.date,
+        start: win.start,
+        end: win.end,
       });
-      const fresh = collectTrainRows(data.response).filter(r => {
+      const fresh = collectTrainRows(data.response).filter((r) => {
         if (seen.has(r.sortKey)) return false;
         seen.add(r.sortKey);
         return true;
@@ -854,14 +1082,16 @@ async function loadTrains() {
       stamp("trains");
       return;
     }
-    el.innerHTML = top.map(r => {
-      const delay = parseDelay(r.obs);
-      return `<li>
-        <span class="time">${r.time}</span>
+    el.innerHTML = top
+      .map((r) => {
+        const delay = parseDelay(r.obs);
+        const li = `<span class="time">${r.time}</span>
         <span class="dest"><b>${esc(r.dest)}</b><span>#${r.num} · ${esc(r.op)}</span></span>
-        ${delay ? `<span class="delay">+${delay}′</span>` : ""}
-      </li>`;
-    }).join("");
+        ${delay ? `<span class="delay">+${delay}′</span>` : ""}`;
+        const url = resolveCardUrl("trains", { station: cfg.ipStation });
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("trains");
     // Smart TTL: refresh only when the next departure has passed. Extend every
     // window we fetched to that moment so quiet stations don't refetch mid-list.
@@ -869,7 +1099,11 @@ async function loadTrains() {
     if (nextMs) {
       const ttl = Math.max(60_000, Math.min(nextMs - Date.now(), 12 * 3600 * 1000));
       for (const w of wins) {
-        touchCache("trains", { station: cfg.ipStation, date: w.date, start: w.start, end: w.end }, ttl);
+        touchCache(
+          "trains",
+          { station: cfg.ipStation, date: w.date, start: w.start, end: w.end },
+          ttl,
+        );
       }
     }
   } catch (e) {
@@ -902,11 +1136,22 @@ async function loadSolar() {
     // Kp 0–9, low is good: map onto the 5-step green→red ramp.
     const kpCellCls = kpNum == null ? "" : scaleClass(kpNum, 2, 6);
     const stormLvl = (data.geomagnetic_storm?.level || "").replace(/^G/, "");
-    const stormCls = data.geomagnetic_storm?.level == null ? "" :
-      /^[012]$/.test(stormLvl) ? "sc1" : /^[34]$/.test(stormLvl) ? "sc3" : "sc5";
+    const stormCls =
+      data.geomagnetic_storm?.level == null
+        ? ""
+        : /^[012]$/.test(stormLvl)
+          ? "sc1"
+          : /^[34]$/.test(stormLvl)
+            ? "sc3"
+            : "sc5";
     const cells = [
       ["Kp index", `<span class="${kpCellCls}">${kpNum ?? "—"} (${kp.label || ""})</span>`.trim()],
-      ["Geomag storm", data.geomagnetic_storm?.level ? `<span class="${stormCls}">${data.geomagnetic_storm.level}</span>` : "—"],
+      [
+        "Geomag storm",
+        data.geomagnetic_storm?.level
+          ? `<span class="${stormCls}">${data.geomagnetic_storm.level}</span>`
+          : "—",
+      ],
       ["Background", data.background_class || "—"],
     ];
     if (loc.geomagnetic_latitude != null) {
@@ -921,14 +1166,20 @@ async function loadSolar() {
     if (data.flare_storm && data.flare_storm.local_impact != null) {
       cells.push(["Local radio", data.flare_storm.local_impact ? "☀️ day-side" : "🌙 night"]);
     }
-    grid.innerHTML = cells.map(([k, v]) =>
-      `<div class="wcell"><span class="wk">${k}</span><span class="wv">${v}</span></div>`).join("");
+    grid.innerHTML = cells
+      .map(
+        ([k, v]) =>
+          `<div class="wcell"><span class="wk">${k}</span><span class="wv">${v}</span></div>`,
+      )
+      .join("");
     const letter = (cls || "").trim().toUpperCase().charAt(0);
     if (letter === "M" || letter === "X") {
-      trackAlerts("solar", [{
-        sig: `flare:${cls.trim().toUpperCase()}`,
-        text: `Solar flare ${cls} · ${data.flare_storm?.label || ""}`,
-      }]);
+      trackAlerts("solar", [
+        {
+          sig: `flare:${cls.trim().toUpperCase()}`,
+          text: `Solar flare ${cls} · ${data.flare_storm?.label || ""}`,
+        },
+      ]);
     }
     stamp("solar");
   } catch (e) {
@@ -954,7 +1205,7 @@ function setFlareScaleMarker(cls) {
   const letter = (c.match(/^[ABCMX]/) || ["A"])[0];
   const mag = parseFloat(c.slice(1)) || 0;
   const base = { A: 0, B: 0.2, C: 0.4, M: 0.6, X: 0.8 }[letter] ?? 0;
-  const pct = Math.min(100, Math.max(0, (base + Math.min(mag, 10) / 10 * 0.19) * 100));
+  const pct = Math.min(100, Math.max(0, (base + (Math.min(mag, 10) / 10) * 0.19) * 100));
   marker.style.left = `${pct}%`;
 }
 
@@ -964,7 +1215,9 @@ async function loadFlights() {
   const el = document.getElementById("flight-list");
   try {
     const { data } = await apiGet("flights", {
-      lat: cfg.lat, lon: cfg.lon, dist: cfg.flightRange,
+      lat: cfg.lat,
+      lon: cfg.lon,
+      dist: cfg.flightRange,
     });
     const ac = data.aircraft || [];
     document.getElementById("flight-count").textContent =
@@ -974,17 +1227,19 @@ async function loadFlights() {
       stamp("flights");
       return;
     }
-    el.innerHTML = ac.map(a => {
-      const alt = a.alt_baro ?? (a.alt_geom ?? "—");
-      const spd = a.gs ?? "—";
-      const call = a.flight || a.hex;
-      const { tag, cls, desc } = classifyAc(a.category, a.dbFlags);
-      return `<li>
-        <span class="callsign">${esc(call)}</span>
+    el.innerHTML = ac
+      .map((a) => {
+        const alt = a.alt_baro ?? a.alt_geom ?? "—";
+        const spd = a.gs ?? "—";
+        const call = a.flight || a.hex;
+        const { tag, cls, desc } = classifyAc(a.category, a.dbFlags);
+        const li = `<span class="callsign">${esc(call)}</span>
         <span class="actag ${cls}" title="${desc}">${tag}</span>
-        <span class="meta">${alt}ft · ${spd}kt</span>
-      </li>`;
-    }).join("");
+        <span class="meta">${alt}ft · ${spd}kt</span>`;
+        const url = resolveCardUrl("flights", { hex: a.hex });
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("flights");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -995,23 +1250,35 @@ async function loadFlights() {
 // mirroring the firmware's flight.cpp classify().
 function classifyAc(cat, dbFlags) {
   if (dbFlags & 1) return { tag: "MIL", cls: "mil", desc: "Military aircraft" };
-  const a = (cat || "").charAt(0), b = (cat || "").charAt(1);
+  const a = (cat || "").charAt(0),
+    b = (cat || "").charAt(1);
   if (a === "A") {
     switch (b) {
-      case "7": return { tag: "HEL", cls: "hel", desc: "Helicopter / rotorcraft" };
-      case "3": return { tag: "COM", cls: "com", desc: "Large commercial airliner" };
-      case "4": return { tag: "COM", cls: "com", desc: "High-vortex large airliner (A380-class)" };
-      case "5": return { tag: "COM", cls: "com", desc: "Heavy airliner" };
-      case "1": return { tag: "LGT", cls: "lgt", desc: "Light aircraft (single/twin piston)" };
-      case "2": return { tag: "LGT", cls: "lgt", desc: "Small aircraft (jet props)" };
-      case "6": return { tag: "LGT", cls: "lgt", desc: "High-performance aircraft" };
+      case "7":
+        return { tag: "HEL", cls: "hel", desc: "Helicopter / rotorcraft" };
+      case "3":
+        return { tag: "COM", cls: "com", desc: "Large commercial airliner" };
+      case "4":
+        return { tag: "COM", cls: "com", desc: "High-vortex large airliner (A380-class)" };
+      case "5":
+        return { tag: "COM", cls: "com", desc: "Heavy airliner" };
+      case "1":
+        return { tag: "LGT", cls: "lgt", desc: "Light aircraft (single/twin piston)" };
+      case "2":
+        return { tag: "LGT", cls: "lgt", desc: "Small aircraft (jet props)" };
+      case "6":
+        return { tag: "LGT", cls: "lgt", desc: "High-performance aircraft" };
     }
   } else if (a === "B") {
     switch (b) {
-      case "1": return { tag: "GLI", cls: "gli", desc: "Glider / sailplane" };
-      case "2": return { tag: "BAL", cls: "bal", desc: "Lighter-than-air (balloon / airship)" };
-      case "4": return { tag: "ULT", cls: "ult", desc: "Ultralight / hang-glider" };
-      case "6": return { tag: "UAV", cls: "uav", desc: "Unmanned aerial vehicle (drone)" };
+      case "1":
+        return { tag: "GLI", cls: "gli", desc: "Glider / sailplane" };
+      case "2":
+        return { tag: "BAL", cls: "bal", desc: "Lighter-than-air (balloon / airship)" };
+      case "4":
+        return { tag: "ULT", cls: "ult", desc: "Ultralight / hang-glider" };
+      case "6":
+        return { tag: "UAV", cls: "uav", desc: "Unmanned aerial vehicle (drone)" };
     }
   }
   return { tag: "CIV", cls: "civ", desc: "Civilian / unknown aircraft type" };
@@ -1032,7 +1299,8 @@ async function loadRadiation() {
     const { data } = await apiGet("radiation", { lat: cfg.lat, lon: cfg.lon });
     const n = data.nearest || {};
     const v = Number(n.dose_nsvh);
-    document.getElementById("rad-station").textContent = `${n.station || "—"} · ${n.distance_km ?? "—"}km`;
+    document.getElementById("rad-station").textContent =
+      `${n.station || "—"} · ${n.distance_km ?? "—"}km`;
     el.textContent = isFinite(v) ? v : "—";
     el.className = "rad-big " + (isFinite(v) ? radClass(v).cls : "");
     document.getElementById("rad-unit").textContent = n.unit || "nSv/h";
@@ -1044,8 +1312,12 @@ async function loadRadiation() {
       ["Status", n.status || "—"],
     ];
     if (n.updated) cells.push(["Updated", fmtTime(n.updated)]);
-    grid.innerHTML = cells.map(([k, v]) =>
-      `<div class="wcell"><span class="wk">${k}</span><span class="wv">${v}</span></div>`).join("");
+    grid.innerHTML = cells
+      .map(
+        ([k, v]) =>
+          `<div class="wcell"><span class="wk">${k}</span><span class="wv">${v}</span></div>`,
+      )
+      .join("");
     stamp("radiation");
   } catch (e) {
     el.textContent = "—";
@@ -1068,24 +1340,31 @@ async function loadAirQuality() {
     const { data } = await apiGet("airquality", { lat: cfg.lat, lon: cfg.lon });
     const s = data.station || {};
     const gi = data.global_index || {};
-    document.getElementById("air-station").textContent = `${s.name || "—"} · ${s.distance_km ?? "—"}km`;
+    document.getElementById("air-station").textContent =
+      `${s.name || "—"} · ${s.distance_km ?? "—"}km`;
     const v = gi.value;
     el.textContent = v != null ? v : "—";
     el.className = "air-big " + airClass(v).cls;
     document.getElementById("air-label").textContent = gi.label || "IQAR";
     const marker = document.getElementById("air-marker");
     if (marker) marker.style.left = `${airClass(v).pct}%`;
-    const cells = (data.pollutants || []).map(p => `
+    const cells = (data.pollutants || [])
+      .map(
+        (p) => `
       <div class="wcell${p.alert ? " alert" : ""}">
         <span class="wk">${esc(p.pollutant)}</span>
         <span class="wv">${p.indexName || "—"} ${p.value ? `(${esc(p.value)})` : ""}</span>
-      </div>`).join("");
+      </div>`,
+      )
+      .join("");
     grid.innerHTML = cells || `<div class="empty">No pollutant data</div>`;
     if (v != null && v >= 4) {
-      trackAlerts("airquality", [{
-        sig: `air:${v}`,
-        text: `${gi.label || "IQAR"} ${v} · ${s.name || "air quality station"}`,
-      }]);
+      trackAlerts("airquality", [
+        {
+          sig: `air:${v}`,
+          text: `${gi.label || "IQAR"} ${v} · ${s.name || "air quality station"}`,
+        },
+      ]);
     }
     stamp("airquality");
   } catch (e) {
@@ -1134,7 +1413,9 @@ async function loadAstro() {
 async function loadUptime() {
   const el = document.getElementById("uptime-list");
   const sites = cfg.uptimeSites;
-  document.getElementById("uptime-count").textContent = sites.length ? `${sites.length} monitors` : "";
+  document.getElementById("uptime-count").textContent = sites.length
+    ? `${sites.length} monitors`
+    : "";
   if (!sites.length) {
     el.innerHTML = `<div class="empty">No monitors configured (see settings)</div>`;
     return;
@@ -1142,16 +1423,19 @@ async function loadUptime() {
   try {
     const { data } = await apiGet("uptime", { sites: JSON.stringify(sites) });
     const up = data.sites || [];
-    const down = up.filter(s => !s.ok);
+    const down = up.filter((s) => !s.ok);
     document.getElementById("uptime-count").textContent =
-      `${up.filter(s => s.ok).length}/${up.length} up${down.length ? " · " + down.length + " down" : ""}`;
-    el.innerHTML = up.map(s => `
-      <li>
-        <span class="up-dot ${s.ok ? "ok" : "down"}"></span>
+      `${up.filter((s) => s.ok).length}/${up.length} up${down.length ? " · " + down.length + " down" : ""}`;
+    el.innerHTML = up
+      .map((s) => {
+        const li = `<span class="up-dot ${s.ok ? "ok" : "down"}"></span>
         <span class="up-label">${esc(s.label)}</span>
         ${s.status ? `<span class="up-status">${s.status}</span>` : ""}
-        <span class="up-ms ${s.ok ? "" : "down"}">${s.ok ? s.ms + "ms" : (s.error || "down")}</span>
-      </li>`).join("");
+        <span class="up-ms ${s.ok ? "" : "down"}">${s.ok ? s.ms + "ms" : s.error || "down"}</span>`;
+        const url = s.url || resolveCardUrl("uptime");
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("uptime");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1219,7 +1503,7 @@ function uvClass(v) {
 function convertTemperature(value, toUnit) {
   if (value == null) return null;
   if (toUnit === "F") {
-    return value * 9 / 5 + 32;
+    return (value * 9) / 5 + 32;
   }
   return value; // default C
 }
@@ -1249,23 +1533,29 @@ async function loadLightning() {
   const el = document.getElementById("bolt-list");
   try {
     const { data } = await apiGet("lightning", {
-      lat: cfg.lat, lon: cfg.lon, radius: cfg.lightningRadius,
+      lat: cfg.lat,
+      lon: cfg.lon,
+      radius: cfg.lightningRadius,
     });
     const st = (data.strikes || [])
       .slice()
-      .sort((a, b) => (a.distance_km - b.distance_km) || ((a.seconds_ago ?? 0) - (b.seconds_ago ?? 0)));
+      .sort((a, b) => a.distance_km - b.distance_km || (a.seconds_ago ?? 0) - (b.seconds_ago ?? 0));
     document.getElementById("bolt-count").textContent = `${st.length} within ${data.radius_km}km`;
     if (!st.length) {
       el.innerHTML = `<div class="empty">No recent strikes in range</div>`;
       stamp("lightning");
       return;
     }
-    el.innerHTML = st.map(s => `
+    el.innerHTML = st
+      .map(
+        (s) => `
       <li>
         <span class="b-pol ${s.polarity < 0 ? "neg" : ""}">${s.polarity < 0 ? "−" : "+"}</span>
         <span class="b-dist ${boltDistClass(s.distance_km)}">${s.distance_km}km</span>
         <span class="b-when">${agoStr(s.seconds_ago)}</span>
-      </li>`).join("");
+      </li>`,
+      )
+      .join("");
     stamp("lightning");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1286,7 +1576,9 @@ function fmtPct(v) {
 // alerts. Rendered as an extra block inside the Weather Warnings card.
 function renderHydro(el, hydro) {
   if (!hydro) return;
-  const parts = [`<li class="hydro-head"><div class="w-dist">Hydrological <span class="lv-tag">InfoÁgua</span></div></li>`];
+  const parts = [
+    `<li class="hydro-head"><div class="w-dist">Hydrological <span class="lv-tag">InfoÁgua</span></div></li>`,
+  ];
 
   if (hydro.nearest) {
     const n = hydro.nearest;
@@ -1330,26 +1622,32 @@ async function loadWarnings() {
       return;
     }
     const alerts = data.alerts || [];
-    document.getElementById("warnings-count").textContent =
-      data.area ? `${data.area.name}${data.count ? " · " + data.count : ""}` : "";
+    document.getElementById("warnings-count").textContent = data.area
+      ? `${data.area.name}${data.count ? " · " + data.count : ""}`
+      : "";
     if (!alerts.length) {
       el.innerHTML = `<div class="empty">No active warnings in ${data.area?.name || "your district"}</div>`;
     } else {
-      el.innerHTML = alerts.map(a => `
-        <li class="lv-${a.level}">
-          <div class="w-dist">${esc(a.type)} <span class="lv-tag">${esc(a.level)}</span></div>
-          <div class="w-alerts">until ${a.end ? fmtTime(a.end) : "—"}</div>
-        </li>`).join("");
+      el.innerHTML = alerts
+        .map((a) => {
+          const li = `<div class="w-dist">${esc(a.type)} <span class="lv-tag">${esc(a.level)}</span></div>
+          <div class="w-alerts">until ${a.end ? fmtTime(a.end) : "—"}</div>`;
+          const url = resolveCardUrl("warnings");
+          return url
+            ? `<li class="lv-${a.level}" data-url="${esc(url)}">${li}</li>`
+            : `<li class="lv-${a.level}">${li}</li>`;
+        })
+        .join("");
     }
     renderHydro(el, data.hydrologic);
     trackAlerts("warnings", [
       ...alerts
-        .filter(a => a.level !== "green")
-        .map(a => ({
+        .filter((a) => a.level !== "green")
+        .map((a) => ({
           sig: `${a.type}|${a.level}|${a.start || ""}|${a.end || ""}`,
           text: `${a.type} (${a.level}) · until ${a.end ? fmtTime(a.end) : "—"}`,
         })),
-      ...(data.hydrologic?.droughts || []).map(d => ({
+      ...(data.hydrologic?.droughts || []).map((d) => ({
         sig: `hydro-${d.basin}|${d.state}`,
         text: `${d.basin}: ${d.state_name || `seca (${d.state})`} · vol ${fmtPct(d.volume) || "—"}`,
       })),
@@ -1364,37 +1662,52 @@ async function loadWarnings() {
 
 function fmtSatTime(iso) {
   if (!iso) return "—";
-  try { return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
-  catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
 }
 
 async function loadSatellites() {
   const el = document.getElementById("sat-list");
   try {
     const { data } = await apiGet("satellites", {
-      lat: cfg.lat, lon: cfg.lon, sats: JSON.stringify(cfg.satellites),
+      lat: cfg.lat,
+      lon: cfg.lon,
+      sats: JSON.stringify(cfg.satellites),
     });
     const sats = data.satellites || [];
-    document.getElementById("sat-count").textContent = data.satellites ? `${sats.length} tracked` : "";
+    document.getElementById("sat-count").textContent = data.satellites
+      ? `${sats.length} tracked`
+      : "";
     if (!sats.length) {
       el.innerHTML = `<div class="empty">No satellites configured (see settings)</div>`;
       stamp("satellites");
       return;
     }
-    el.innerHTML = sats.map(s => {
-      if (s.error || !s.next) {
-        return `<li><span class="sat-name">${esc(s.name)}</span><span class="sat-none">${s.error || "no pass in 48h"}</span></li>`;
-      }
-      const p = s.next;
-      const mins = p.duration_min;
-      return `<li>
-        <span class="sat-name">${esc(s.name)}</span>
+    el.innerHTML = sats
+      .map((s) => {
+        const url = resolveCardUrl("satellites", { id: s.id });
+        if (s.error || !s.next) {
+          const content = `<span class="sat-name">${esc(s.name)}</span><span class="sat-none">${s.error || "no pass in 48h"}</span>`;
+          return url ? `<li data-url="${esc(url)}">${content}</li>` : `<li>${content}</li>`;
+        }
+        const p = s.next;
+        const mins = p.duration_min;
+        const li = `<span class="sat-name">${esc(s.name)}</span>
         <span class="sat-pass">
           <span class="sat-when">${fmtSatTime(p.rise)}</span>
           <span class="sat-meta"> · elev ${p.max_elev}° · ${mins}min</span>
-        </span>
-      </li>`;
-    }).join("");
+        </span>`;
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("satellites");
     // Smart TTL: refresh when the next pass has ended — the display is stale
     // the moment the earliest upcoming pass sets.
@@ -1407,7 +1720,11 @@ async function loadSatellites() {
     }
     if (isFinite(nextSet)) {
       const ttl = Math.max(60_000, Math.min(nextSet - Date.now(), 12 * 3600 * 1000));
-      touchCache("satellites", { lat: cfg.lat, lon: cfg.lon, sats: JSON.stringify(cfg.satellites) }, ttl);
+      touchCache(
+        "satellites",
+        { lat: cfg.lat, lon: cfg.lon, sats: JSON.stringify(cfg.satellites) },
+        ttl,
+      );
     }
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1441,9 +1758,14 @@ async function loadRen() {
       marker.style.left = `${Math.min(100, Math.max(0, mix.renewable_share_pct))}%`;
     }
     el.innerHTML = [
-      renW(s.wind, "wind"), renW(s.solar, "solar"), renW(s.hydro, "hydro"),
-      renW(s.natural_gas, "gas"), renW(s.coal, "coal"), renW(s.biomass, "bio"),
-      renW(s.wave, "wave"), renW(s.other_thermal, "therm"),
+      renW(s.wind, "wind"),
+      renW(s.solar, "solar"),
+      renW(s.hydro, "hydro"),
+      renW(s.natural_gas, "gas"),
+      renW(s.coal, "coal"),
+      renW(s.biomass, "bio"),
+      renW(s.wave, "wave"),
+      renW(s.other_thermal, "therm"),
     ].join("");
     const share = mix.renewable_share_pct;
     if (share != null) {
@@ -1455,7 +1777,8 @@ async function loadRen() {
     const parts = [];
     if (sup.total_generation != null) parts.push(`gen ${Math.round(sup.total_generation)}MWh`);
     if (sup.consumption != null) parts.push(`cons ${Math.round(sup.consumption)}MWh`);
-    if (sup.renewable_generation != null) parts.push(`ren ${Math.round(sup.renewable_generation)}MWh`);
+    if (sup.renewable_generation != null)
+      parts.push(`ren ${Math.round(sup.renewable_generation)}MWh`);
     if (parts.length) {
       price.innerHTML = `<span class="ren-price-val">${parts.join(" · ")}</span>`;
     } else {
@@ -1469,7 +1792,9 @@ async function loadRen() {
 
 // ---- Seismic (IPMA) ------------------------------------------------------
 
-function seismoClass(m) { return m >= 4.5 ? "m4" : m >= 3.5 ? "m3" : m >= 2.5 ? "m2" : m >= 1.5 ? "m1" : "m0"; }
+function seismoClass(m) {
+  return m >= 4.5 ? "m4" : m >= 3.5 ? "m3" : m >= 2.5 ? "m2" : m >= 1.5 ? "m1" : "m0";
+}
 
 async function loadSeismic() {
   const el = document.getElementById("seismic-list");
@@ -1478,31 +1803,41 @@ async function loadSeismic() {
     // Newest first, then closest (time + distance, not magnitude).
     const ev = (data.events || [])
       .slice()
-      .sort((a, b) =>
-        (new Date(b.time || 0) - new Date(a.time || 0)) ||
-        ((a.distance_km ?? 1e9) - (b.distance_km ?? 1e9)));
-    document.getElementById("seismic-count").textContent =
-      data.last_activity ? `as of ${fmtTime(data.last_activity)}` : "";
-    const maxMag = ev.length ? Math.max(...ev.map(e => e.mag)) : null;
+      .sort(
+        (a, b) =>
+          new Date(b.time || 0) - new Date(a.time || 0) ||
+          (a.distance_km ?? 1e9) - (b.distance_km ?? 1e9),
+      );
+    document.getElementById("seismic-count").textContent = data.last_activity
+      ? `as of ${fmtTime(data.last_activity)}`
+      : "";
+    const maxMag = ev.length ? Math.max(...ev.map((e) => e.mag)) : null;
     const marker = document.getElementById("seismo-marker");
-    if (marker) marker.style.left = `${maxMag == null ? 0 : Math.min(100, Math.max(0, (maxMag / 6) * 100))}%`;
+    if (marker)
+      marker.style.left = `${maxMag == null ? 0 : Math.min(100, Math.max(0, (maxMag / 6) * 100))}%`;
     if (!ev.length) {
       el.innerHTML = `<div class="empty">No recent seismic activity</div>`;
       stamp("seismic");
       return;
     }
-    el.innerHTML = ev.map(e => `
-      <li>
-        <span class="q-mag ${seismoClass(e.mag)}">M${e.mag.toFixed(1)}</span>
+    el.innerHTML = ev
+      .map((e) => {
+        const li = `<span class="q-mag ${seismoClass(e.mag)}">M${e.mag.toFixed(1)}</span>
         <span class="q-place">${esc(e.region)}</span>
-        <span class="q-meta">${e.distance_km}km · ${e.depth_km}km · ${e.time ? fmtTime(e.time) : "—"}</span>
-      </li>`).join("");
-    trackAlerts("seismic", ev
-      .filter(e => e.mag >= 4.0)
-      .map(e => ({
-        sig: `${e.time}|${e.lat}|${e.lon}`,
-        text: `M${e.mag.toFixed(1)} ${e.region} · ${e.distance_km}km away`,
-      })));
+        <span class="q-meta">${e.distance_km}km · ${e.depth_km}km · ${e.time ? fmtTime(e.time) : "—"}</span>`;
+        const url = resolveCardUrl("seismic", { lat: e.lat, lon: e.lon });
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
+    trackAlerts(
+      "seismic",
+      ev
+        .filter((e) => e.mag >= 4.0)
+        .map((e) => ({
+          sig: `${e.time}|${e.lat}|${e.lon}`,
+          text: `M${e.mag.toFixed(1)} ${e.region} · ${e.distance_km}km away`,
+        })),
+    );
     stamp("seismic");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1511,7 +1846,14 @@ async function loadSeismic() {
 
 // ---- Fuel prices (API Aberta / DGEG) -------------------------------------
 
-const FUEL_ICONS = { gasoline_95: "⛽", gasoline_98: "⛽", diesel: "🛢", diesel_plus: "🛢", gpl_auto: "◔", gnc_kg: "◔" };
+const FUEL_ICONS = {
+  gasoline_95: "⛽",
+  gasoline_98: "⛽",
+  diesel: "🛢",
+  diesel_plus: "🛢",
+  gpl_auto: "◔",
+  gnc_kg: "◔",
+};
 
 async function loadFuel() {
   const el = document.getElementById("fuel-list");
@@ -1524,18 +1866,19 @@ async function loadFuel() {
       stamp("fuel");
       return;
     }
-    el.innerHTML = fuels.map(f => {
-      const lo = Math.min(...fuels.map(x => x.avg));
-      const hi = Math.max(...fuels.map(x => x.avg));
-      const cls = hi > lo ? scaleClass(f.avg, lo, hi) : "";
-      return `
-      <li>
-        <span class="fuel-ic">${FUEL_ICONS[f.slug] || "•"}</span>
+    el.innerHTML = fuels
+      .map((f) => {
+        const lo = Math.min(...fuels.map((x) => x.avg));
+        const hi = Math.max(...fuels.map((x) => x.avg));
+        const cls = hi > lo ? scaleClass(f.avg, lo, hi) : "";
+        const li = `<span class="fuel-ic">${FUEL_ICONS[f.slug] || "•"}</span>
         <span class="fuel-name">${esc(f.name)}</span>
         <span class="fuel-price${cls ? " " + cls : ""}">€${f.avg.toFixed(3)}</span>
-        <span class="fuel-meta">${f.min.toFixed(3)}–${f.max.toFixed(3)}</span>
-      </li>`;
-    }).join("");
+        <span class="fuel-meta">${f.min.toFixed(3)}–${f.max.toFixed(3)}</span>`;
+        const url = resolveCardUrl("fuel");
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("fuel");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1544,7 +1887,23 @@ async function loadFuel() {
 
 // ---- Reservoir storage (SNIRH / Albufeiras) ------------------------------
 
-const ALBUF_ICONS = { "Arade": "💧", "Ave": "💧", "Cávado": "💧", "Douro": "🌊", "Guadiana": "🌊", "Lima": "💧", "Mira": "💧", "Mondego": "🌊", "Ribeiras do Alentejo": "💧", "Ribeiras do Barlavento": "💧", "Ribeiras do Oeste": "💧", "Ribeiras do Sotavento": "💧", "Sado": "💧", "Tejo": "🌊", "Vouga": "💧" };
+const ALBUF_ICONS = {
+  Arade: "💧",
+  Ave: "💧",
+  Cávado: "💧",
+  Douro: "🌊",
+  Guadiana: "🌊",
+  Lima: "💧",
+  Mira: "💧",
+  Mondego: "🌊",
+  "Ribeiras do Alentejo": "💧",
+  "Ribeiras do Barlavento": "💧",
+  "Ribeiras do Oeste": "💧",
+  "Ribeiras do Sotavento": "💧",
+  Sado: "💧",
+  Tejo: "🌊",
+  Vouga: "💧",
+};
 
 async function loadAlbufeiras() {
   const el = document.getElementById("albuf-list");
@@ -1560,17 +1919,20 @@ async function loadAlbufeiras() {
       stamp("albufeiras");
       return;
     }
-    el.innerHTML = basins.map(b => {
-      const cls = b.delta != null && b.delta > 0 ? "up" : b.delta != null && b.delta < 0 ? "down" : "";
-      const delta = b.delta == null ? "" : `${b.delta > 0 ? "+" : ""}${b.delta.toFixed(1)}%`;
-      return `
+    el.innerHTML = basins
+      .map((b) => {
+        const cls =
+          b.delta != null && b.delta > 0 ? "up" : b.delta != null && b.delta < 0 ? "down" : "";
+        const delta = b.delta == null ? "" : `${b.delta > 0 ? "+" : ""}${b.delta.toFixed(1)}%`;
+        return `
       <li>
         <span class="fuel-ic">${ALBUF_ICONS[b.name] || "💧"}</span>
         <span class="fuel-name" title="${esc(b.name)}">${b.distance_km != null ? `${esc(b.name)} · ${b.distance_km}km` : esc(b.name)}</span>
         <span class="fuel-price">${b.pct != null ? b.pct.toFixed(1) + "%" : "–"}</span>
         <span class="fuel-meta ${cls}">${delta}</span>
       </li>`;
-    }).join("");
+      })
+      .join("");
     stamp("albufeiras");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1591,15 +1953,18 @@ async function loadFx() {
       stamp("fx");
       return;
     }
-    el.innerHTML = entries.map(([code, r]) => {
-      const cls = r.change_pct == null ? "" : r.change_pct >= 0 ? "up" : "down";
-      const delta = r.change_pct == null ? "—" : `${r.change_pct >= 0 ? "+" : ""}${r.change_pct}%`;
-      return `<li>
-        <span class="fx-code">${esc(code)}</span>
+    el.innerHTML = entries
+      .map(([code, r]) => {
+        const cls = r.change_pct == null ? "" : r.change_pct >= 0 ? "up" : "down";
+        const delta =
+          r.change_pct == null ? "—" : `${r.change_pct >= 0 ? "+" : ""}${r.change_pct}%`;
+        const li = `<span class="fx-code">${esc(code)}</span>
         <span class="fx-rate">${Number(r.rate).toFixed(4)}</span>
-        <span class="fx-chg ${cls}">${delta}</span>
-      </li>`;
-    }).join("");
+        <span class="fx-chg ${cls}">${delta}</span>`;
+        const url = resolveCardUrl("fx", { code });
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
+      .join("");
     stamp("fx");
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
@@ -1614,120 +1979,141 @@ async function loadPsi() {
     document.getElementById("psi-sub").textContent = data.symbol || "";
     const big = document.getElementById("psi-price");
     big.textContent =
-      data.price != null ? data.price.toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+      data.price != null
+        ? data.price.toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "—";
     big.classList.toggle("down", data.change != null && data.change < 0);
     const chg = data.change_pct;
     document.getElementById("psi-change").innerHTML =
-      chg == null ? "—" : `<span class="${chg >= 0 ? "up" : "down"}">${chg >= 0 ? "+" : ""}${chg}%</span>`;
+      chg == null
+        ? "—"
+        : `<span class="${chg >= 0 ? "up" : "down"}">${chg >= 0 ? "+" : ""}${chg}%</span>`;
     const range = document.getElementById("psi-range");
     range.innerHTML = [
-      data.day_low != null ? `day ${data.day_low.toLocaleString()}–${data.day_high?.toLocaleString()}` : "",
-      data.fifty_two_week?.low != null ? `52w ${data.fifty_two_week.low.toLocaleString()}–${data.fifty_two_week.high?.toLocaleString()}` : "",
-    ].filter(Boolean).map(t => `<span class="psi-range-item">${t}</span>`).join("");
+      data.day_low != null
+        ? `day ${data.day_low.toLocaleString()}–${data.day_high?.toLocaleString()}`
+        : "",
+      data.fifty_two_week?.low != null
+        ? `52w ${data.fifty_two_week.low.toLocaleString()}–${data.fifty_two_week.high?.toLocaleString()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .map((t) => `<span class="psi-range-item">${t}</span>`)
+      .join("");
     stamp("psi");
-   } catch (e) {
-     document.getElementById("psi-price").textContent = "—";
-     document.getElementById("psi-change").textContent = e.message;
-   }
- }
- 
- // ---- Propagation (NOAA SWPC + Kyoto) --------------------------------------
- 
- async function loadPropagation() {
-   const el = document.getElementById("propagation-bands");
-   try {
-     const { data } = await apiGet("propagation");
-     const indices = data.indices || {};
-     document.getElementById("propagation-sub").textContent = data.updated ? fmtTime(data.updated) : "";
-     const sfi = indices.sfi;
-     const aIndex = indices.a_index;
-     const kp = indices.kp;
-     const dst = indices.dst;
-     const trend = indices.sfi_trend;
- 
-     // SFI line
-     const sfiEl = document.getElementById("propagation-sfi");
-     if (sfiEl) {
-       sfiEl.textContent = sfi != null ? `${Math.round(sfi)}` : "—";
-       sfiEl.className = "prop-value " + refClassHigh(sfi, 150, 100);
-       if (trend && trend.direction) {
-         sfiEl.title = `SFI trend: ${trend.direction} ${Math.abs(trend.delta || 0)} sfu/7d`;
-       } else {
-         sfiEl.title = "";
-       }
-     }
- 
-     // A-index line
-     const aEl = document.getElementById("propagation-a");
-     if (aEl) {
-       aEl.textContent = aIndex != null ? `${aIndex}` : "—";
-       aEl.className = "prop-value " + refClass(aIndex, 10, 30);
-     }
- 
-     // Kp line
-     const kpEl = document.getElementById("propagation-kp");
-     if (kpEl) {
-       kpEl.textContent = kp != null ? `${kp.toFixed(2)}` : "—";
-       kpEl.className = "prop-value " + refClass(kp, 3, 5);
-       if (indices.kp_label) {
-         kpEl.title = indices.kp_label;
-       }
-     }
- 
-     // Dst line (more negative = worse storm)
-     const dstEl = document.getElementById("propagation-dst");
-     if (dstEl) {
-       dstEl.textContent = dst != null ? `${dst}` : "—";
-       dstEl.className = "prop-value " + (dst == null ? "" : dst > -30 ? "good" : dst < -80 ? "bad" : "mid");
-       if (dst != null && dst < -50) {
-         dstEl.title = "Geomagnetic storm";
-       } else {
-         dstEl.title = "";
-       }
-     }
- 
-     // Gray-line
-     const grayEl = document.getElementById("propagation-gray");
-     if (grayEl) {
-       const gray = data.gray_line || {};
-       grayEl.textContent = gray.label || "—";
-       grayEl.title = gray.next_event || "";
-       if (gray.active) {
-         grayEl.classList.add("active");
-       } else {
-         grayEl.classList.remove("active");
-       }
-     }
- 
-     // Bands
-     const bandsEl = document.getElementById("propagation-bands");
-     if (bandsEl) {
-       const bands = data.bands || [];
-       bandsEl.innerHTML = bands.map(b => {
-         const cls = b.quality === "excellent" ? "prop-excellent" :
-                       b.quality === "good" ? "prop-good" :
-                       b.quality === "fair" ? "prop-fair" :
-                       b.quality === "poor" ? "prop-poor" :
-                       "prop-closed";
-         return `<li><span class="prop-band" title="${b.band} — ${b.freq} MHz">${b.band}</span><span class="prop-value ${cls}">${b.quality}</span></li>`;
-       }).join("");
-     }
- 
-     // Overall quality
-     const overallEl = document.getElementById("propagation-overall");
-     if (overallEl) {
-       const overall = data.overall || {};
-       overallEl.textContent = overall.label || "—";
-       overallEl.className = `prop-overall ${overall.level || ""}`;
-     }
- 
-     stamp("propagation");
-   } catch (e) {
-     el.innerHTML = `<div class="empty">${e.message}</div>`;
-   }
- }
- 
- // ---- System / moon -------------------------------------------------------
+  } catch (e) {
+    document.getElementById("psi-price").textContent = "—";
+    document.getElementById("psi-change").textContent = e.message;
+  }
+}
+
+// ---- Propagation (NOAA SWPC + Kyoto) --------------------------------------
+
+async function loadPropagation() {
+  const el = document.getElementById("propagation-bands");
+  try {
+    const { data } = await apiGet("propagation");
+    const indices = data.indices || {};
+    document.getElementById("propagation-sub").textContent = data.updated
+      ? fmtTime(data.updated)
+      : "";
+    const sfi = indices.sfi;
+    const aIndex = indices.a_index;
+    const kp = indices.kp;
+    const dst = indices.dst;
+    const trend = indices.sfi_trend;
+
+    // SFI line
+    const sfiEl = document.getElementById("propagation-sfi");
+    if (sfiEl) {
+      sfiEl.textContent = sfi != null ? `${Math.round(sfi)}` : "—";
+      sfiEl.className = "prop-value " + refClassHigh(sfi, 150, 100);
+      if (trend && trend.direction) {
+        sfiEl.title = `SFI trend: ${trend.direction} ${Math.abs(trend.delta || 0)} sfu/7d`;
+      } else {
+        sfiEl.title = "";
+      }
+    }
+
+    // A-index line
+    const aEl = document.getElementById("propagation-a");
+    if (aEl) {
+      aEl.textContent = aIndex != null ? `${aIndex}` : "—";
+      aEl.className = "prop-value " + refClass(aIndex, 10, 30);
+    }
+
+    // Kp line
+    const kpEl = document.getElementById("propagation-kp");
+    if (kpEl) {
+      kpEl.textContent = kp != null ? `${kp.toFixed(2)}` : "—";
+      kpEl.className = "prop-value " + refClass(kp, 3, 5);
+      if (indices.kp_label) {
+        kpEl.title = indices.kp_label;
+      }
+    }
+
+    // Dst line (more negative = worse storm)
+    const dstEl = document.getElementById("propagation-dst");
+    if (dstEl) {
+      dstEl.textContent = dst != null ? `${dst}` : "—";
+      dstEl.className =
+        "prop-value " + (dst == null ? "" : dst > -30 ? "good" : dst < -80 ? "bad" : "mid");
+      if (dst != null && dst < -50) {
+        dstEl.title = "Geomagnetic storm";
+      } else {
+        dstEl.title = "";
+      }
+    }
+
+    // Gray-line
+    const grayEl = document.getElementById("propagation-gray");
+    if (grayEl) {
+      const gray = data.gray_line || {};
+      grayEl.textContent = gray.label || "—";
+      grayEl.title = gray.next_event || "";
+      if (gray.active) {
+        grayEl.classList.add("active");
+      } else {
+        grayEl.classList.remove("active");
+      }
+    }
+
+    // Bands
+    const bandsEl = document.getElementById("propagation-bands");
+    if (bandsEl) {
+      const bands = data.bands || [];
+      bandsEl.innerHTML = bands
+        .map((b) => {
+          const cls =
+            b.quality === "excellent"
+              ? "prop-excellent"
+              : b.quality === "good"
+                ? "prop-good"
+                : b.quality === "fair"
+                  ? "prop-fair"
+                  : b.quality === "poor"
+                    ? "prop-poor"
+                    : "prop-closed";
+          return `<li><span class="prop-band" title="${b.band} — ${b.freq} MHz">${b.band}</span><span class="prop-value ${cls}">${b.quality}</span></li>`;
+        })
+        .join("");
+    }
+
+    // Overall quality
+    const overallEl = document.getElementById("propagation-overall");
+    if (overallEl) {
+      const overall = data.overall || {};
+      overallEl.textContent = overall.label || "—";
+      overallEl.className = `prop-overall ${overall.level || ""}`;
+    }
+
+    stamp("propagation");
+  } catch (e) {
+    el.innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
+// ---- System / moon -------------------------------------------------------
 
 function updateLocChip() {
   document.getElementById("loc-coords").textContent =
@@ -1749,7 +2135,9 @@ async function loadSystem() {
       saveConfig();
       updateLocChip();
     }
-  } catch { document.getElementById("sys-ip").textContent = "—"; }
+  } catch {
+    document.getElementById("sys-ip").textContent = "—";
+  }
   stamp("system");
 }
 
@@ -1757,10 +2145,13 @@ async function loadMoon() {
   try {
     const { data } = await apiGet("moon", { lat: cfg.lat, lon: cfg.lon });
     // Sun/Moon rise & set from the NASA Horizons RTS table (UTC → local).
-    const fmt = iso => {
+    const fmt = (iso) => {
       if (!iso) return "--:--";
-      try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
-      catch { return "--:--"; }
+      try {
+        return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch {
+        return "--:--";
+      }
     };
     document.getElementById("sun-rise").textContent = fmt(data.sunrise);
     document.getElementById("sun-set").textContent = fmt(data.sunset);
@@ -1769,6 +2160,9 @@ async function loadMoon() {
     const frac = data.moon_phase ?? synodicFraction(new Date());
     document.getElementById("moon-phase").innerHTML = moonDisc(frac);
     document.getElementById("moon-label").textContent = describeMoon(frac, data);
+    const sunmoonEl = document.getElementById("sunmoon");
+    const sunmoonUrl = resolveCardUrl("sunmoon");
+    if (sunmoonUrl) sunmoonEl.dataset.url = sunmoonUrl;
     stamp("sunmoon");
   } catch {
     // keep defaults
@@ -1803,8 +2197,10 @@ function synodicFraction(d) {
 // The lit lens is built by sampling the terminator curve x = C ± k·sqrt(R²-y²),
 // where k = cos(2π·phase); lit on the right while waxing, left while waning.
 function moonDisc(phase) {
-  const R = 48, C = 50, STEPS = 40;
-  const k = Math.cos(2 * Math.PI * phase);   // +1 new … -1 full
+  const R = 48,
+    C = 50,
+    STEPS = 40;
+  const k = Math.cos(2 * Math.PI * phase); // +1 new … -1 full
   const waxing = phase < 0.5;
   // Terminator edge: inner boundary of the lit lens, top → bottom.
   let d = "";
@@ -1822,7 +2218,7 @@ function moonDisc(phase) {
     d += `L${x.toFixed(2)},${y.toFixed(2)}`;
   }
   d += "Z";
-  const lit = (1 - k) / 2;   // illuminated fraction 0..1
+  const lit = (1 - k) / 2; // illuminated fraction 0..1
   return `<svg viewBox="0 0 100 100" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
     <circle cx="${C}" cy="${C}" r="${R}" fill="#0d0f14" stroke="#3a4150" stroke-width="2"/>
     <path d="${d}" fill="url(#moonshade)" opacity="${0.55 + 0.45 * lit}"/>
@@ -1839,11 +2235,15 @@ function moonDisc(phase) {
 
 function tick() {
   const now = new Date();
-  const pad = n => String(n).padStart(2, "0");
+  const pad = (n) => String(n).padStart(2, "0");
   document.getElementById("clock-time").textContent =
     `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  document.getElementById("clock-date").textContent =
-    now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  document.getElementById("clock-date").textContent = now.toLocaleDateString([], {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
   updateSmallClocks();
 }
 
@@ -1859,9 +2259,9 @@ function openSettings() {
   document.getElementById("cfg-station").value = cfg.ipStation;
   document.getElementById("cfg-station-name").value = cfg.ipStationName;
   const upBox = document.getElementById("cfg-uptime-sites");
-  if (upBox) upBox.value = (cfg.uptimeSites || []).map(s => `${s.label} | ${s.url}`).join("\n");
+  if (upBox) upBox.value = (cfg.uptimeSites || []).map((s) => `${s.label} | ${s.url}`).join("\n");
   const satBox = document.getElementById("cfg-satellites");
-  if (satBox) satBox.value = (cfg.satellites || []).map(s => `${s.name} | ${s.id}`).join("\n");
+  if (satBox) satBox.value = (cfg.satellites || []).map((s) => `${s.name} | ${s.id}`).join("\n");
   renderSmallClockConfigs();
   renderWidgetToggles();
   renderAlertToggles();
@@ -1879,32 +2279,46 @@ function saveSettings() {
   cfg.incidentRadius = parseInt(document.getElementById("cfg-incident-radius").value, 10) || 20;
   cfg.ipStation = document.getElementById("cfg-station").value.trim();
   cfg.ipStationName = document.getElementById("cfg-station-name").value.trim();
-  cfg.earthquakeRadius = parseInt(document.getElementById("cfg-quake-radius").value, 10) || cfg.earthquakeRadius;
-  cfg.lightningRadius = parseInt(document.getElementById("cfg-lightning-radius").value, 10) || cfg.lightningRadius;
+  cfg.earthquakeRadius =
+    parseInt(document.getElementById("cfg-quake-radius").value, 10) || cfg.earthquakeRadius;
+  cfg.lightningRadius =
+    parseInt(document.getElementById("cfg-lightning-radius").value, 10) || cfg.lightningRadius;
   const upBox = document.getElementById("cfg-uptime-sites");
   if (upBox) {
-    cfg.uptimeSites = upBox.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
-      const i = l.indexOf("|");
-      if (i > 0) return { label: l.slice(0, i).trim(), url: l.slice(i + 1).trim() };
-      return { label: l, url: l };
-    });
+    cfg.uptimeSites = upBox.value
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const i = l.indexOf("|");
+        if (i > 0) return { label: l.slice(0, i).trim(), url: l.slice(i + 1).trim() };
+        return { label: l, url: l };
+      });
   }
   const satBox = document.getElementById("cfg-satellites");
   if (satBox) {
-    cfg.satellites = satBox.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
-      const i = l.indexOf("|");
-      if (i > 0) return { name: l.slice(0, i).trim(), id: l.slice(i + 1).trim() };
-      return { name: l, id: l };
-    });
+    cfg.satellites = satBox.value
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const i = l.indexOf("|");
+        if (i > 0) return { name: l.slice(0, i).trim(), id: l.slice(i + 1).trim() };
+        return { name: l, id: l };
+      });
   }
-  cfg.clocks = [...document.querySelectorAll(".clk-row")].map(row => ({
+  cfg.clocks = [...document.querySelectorAll(".clk-row")].map((row) => ({
     label: row.querySelector('input[type="text"]').value.trim(),
     tz: row.querySelector("select").value,
   }));
-  cfg.hiddenWidgets = [...document.querySelectorAll(".wsec[data-widget] .w-toggle")].filter(cb => !cb.checked).map(cb => cb.dataset.widget);
+  cfg.hiddenWidgets = [...document.querySelectorAll(".wsec[data-widget] .w-toggle")]
+    .filter((cb) => !cb.checked)
+    .map((cb) => cb.dataset.widget);
   const allClocks = document.getElementById("cfg-clocks-all");
   if (allClocks) cfg.clocksAll = allClocks.checked;
-  cfg.alerts = [...document.querySelectorAll(".a-toggle")].filter(cb => cb.checked).map(cb => cb.dataset.alert);
+  cfg.alerts = [...document.querySelectorAll(".a-toggle")]
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.dataset.alert);
   saveConfig();
   bustApiCache();
   renderClockCards();
@@ -1917,18 +2331,24 @@ function saveSettings() {
 }
 
 function useMyLocation(close = true) {
-  if (!navigator.geolocation) { setStatus("Geolocation unsupported", "err"); return; }
-  navigator.geolocation.getCurrentPosition(pos => {
-    cfg.lat = +pos.coords.latitude.toFixed(5);
-    cfg.lon = +pos.coords.longitude.toFixed(5);
-    cfg.locName = "you are here";
-    saveConfig();
-    bustApiCache();
-    updateLocChip();
-    if (close) closeSettings();
-    setStatus("location set", "ok");
-    refreshAll();
-  }, err => setStatus(`Location error: ${err.message}`, "err"));
+  if (!navigator.geolocation) {
+    setStatus("Geolocation unsupported", "err");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      cfg.lat = +pos.coords.latitude.toFixed(5);
+      cfg.lon = +pos.coords.longitude.toFixed(5);
+      cfg.locName = "you are here";
+      saveConfig();
+      bustApiCache();
+      updateLocChip();
+      if (close) closeSettings();
+      setStatus("location set", "ok");
+      refreshAll();
+    },
+    (err) => setStatus(`Location error: ${err.message}`, "err"),
+  );
 }
 
 // ---- Boot ----------------------------------------------------------------
@@ -1941,10 +2361,13 @@ async function detectRegion() {
     const { data } = await apiGet("region", { lat: cfg.lat, lon: cfg.lon });
     outsidePT = data.in_pt === false;
     applyWidgetVisibility();
-  } catch { /* keep previous state */ }
+  } catch {
+    /* keep previous state */
+  }
 }
 
-function refreshAll() {  if (widgetVisible("weather")) loadWeather();
+function refreshAll() {
+  if (widgetVisible("weather")) loadWeather();
   if (widgetVisible("forecast")) loadForecast();
   if (widgetVisible("incidents") && !outsidePT) loadIncidents();
   if (widgetVisible("warnings") && !outsidePT) loadWarnings();
@@ -1965,12 +2388,12 @@ function refreshAll() {  if (widgetVisible("weather")) loadWeather();
   if (widgetVisible("albufeiras") && !outsidePT) loadAlbufeiras();
   if (widgetVisible("fx")) loadFx();
   if (widgetVisible("psi") && !outsidePT) loadPsi();
-   if (widgetVisible("system")) loadSystem();
-   if (widgetVisible("propagation")) loadPropagation();
+  if (widgetVisible("system")) loadSystem();
+  if (widgetVisible("propagation")) loadPropagation();
 }
 
 function refreshIntervalMs() {
-  return (D.refreshMs ?? 60000);
+  return D.refreshMs ?? 60000;
 }
 
 // ---- Station search (mirrors the firmware's /api/stations) --------------
@@ -1978,7 +2401,10 @@ function refreshIntervalMs() {
 async function searchStations() {
   const q = document.getElementById("cfg-station-q").value.trim();
   const box = document.getElementById("station-results");
-  if (!q) { box.innerHTML = `<span class="hint">type a station name first</span>`; return; }
+  if (!q) {
+    box.innerHTML = `<span class="hint">type a station name first</span>`;
+    return;
+  }
   box.innerHTML = `<span class="hint">searching…</span>`;
   try {
     const { data } = await apiGet("stations", { q });
@@ -1988,7 +2414,7 @@ async function searchStations() {
       return;
     }
     box.innerHTML = "";
-    arr.forEach(s => {
+    arr.forEach((s) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "stn";
@@ -2016,19 +2442,19 @@ function clearStation() {
 function initTooltips() {
   const tip = document.getElementById("tip");
   if (!tip) return;
-  document.addEventListener("mouseover", e => {
+  document.addEventListener("mouseover", (e) => {
     const el = e.target.closest("[data-tip]");
     if (!el) return;
     tip.textContent = el.dataset.tip;
     tip.classList.remove("hidden");
     positionTip(e.clientX, e.clientY);
   });
-  document.addEventListener("mouseout", e => {
+  document.addEventListener("mouseout", (e) => {
     if (e.target.closest && e.target.closest("[data-tip]")) {
       document.getElementById("tip").classList.add("hidden");
     }
   });
-  document.addEventListener("mousemove", e => {
+  document.addEventListener("mousemove", (e) => {
     if (!document.getElementById("tip").classList.contains("hidden")) {
       positionTip(e.clientX, e.clientY);
     }
@@ -2036,8 +2462,10 @@ function initTooltips() {
 }
 function positionTip(x, y) {
   const tip = document.getElementById("tip");
-  const winW = window.innerWidth, winH = window.innerHeight;
-  const tipW = tip.offsetWidth, tipH = tip.offsetHeight;
+  const winW = window.innerWidth,
+    winH = window.innerHeight;
+  const tipW = tip.offsetWidth,
+    tipH = tip.offsetHeight;
   // Tip is position:fixed, so position with viewport coords (clientX/Y).
   // Account for scroll so it stays glued to the cursor regardless of scroll.
   let left = x + 12;
@@ -2052,6 +2480,13 @@ function positionTip(x, y) {
 
 // Wire up events and init tooltip system.
 function wireEvents() {
+  // Delegated click handler for elements with data-url (list items, card titles, etc.).
+  document.getElementById("grid").addEventListener("click", (e) => {
+    const el = e.target.closest("[data-url]");
+    if (el) {
+      window.open(el.dataset.url, "_blank");
+    }
+  });
   document.getElementById("settings-btn").addEventListener("click", openSettings);
   document.getElementById("close-settings-btn").addEventListener("click", closeSettings);
   document.getElementById("settings-scrim").addEventListener("click", closeSettings);
@@ -2060,16 +2495,19 @@ function wireEvents() {
   document.getElementById("loc-btn").addEventListener("click", useMyLocation);
   document.getElementById("search-station-btn").addEventListener("click", searchStations);
   document.getElementById("clear-station-btn").addEventListener("click", clearStation);
-  document.getElementById("cfg-station-q").addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); searchStations(); }
+  document.getElementById("cfg-station-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      searchStations();
+    }
   });
   // Delegated: handles both static sections and dynamically created clock rows.
-  document.getElementById("settings-panel").addEventListener("change", e => {
+  document.getElementById("settings-panel").addEventListener("change", (e) => {
     // Master "All clocks" switch: apply live + force small-clock rows off/on.
     if (e.target.id === "cfg-clocks-all") {
       cfg.clocksAll = e.target.checked;
       applyWidgetVisibility();
-      document.querySelectorAll(".clk-row").forEach(row => {
+      document.querySelectorAll(".clk-row").forEach((row) => {
         const t = row.querySelector(".w-toggle");
         const on = e.target.checked && widgetVisible(t?.dataset.widget);
         if (t) t.checked = on;
@@ -2081,27 +2519,30 @@ function wireEvents() {
     if (toggle) setWidgetSection(toggle.dataset.widget, toggle.checked);
   });
   document.getElementById("add-clock-btn").addEventListener("click", addClockRow);
-  document.getElementById("small-clock-configs").addEventListener("click", e => {
+  document.getElementById("small-clock-configs").addEventListener("click", (e) => {
     const rm = e.target.closest(".clk-rm");
     if (rm) removeClockRow(rm.closest(".clk-row"));
   });
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && !document.getElementById("settings-panel").classList.contains("hidden")) {
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      !document.getElementById("settings-panel").classList.contains("hidden")
+    ) {
       closeSettings();
     }
   });
   // Unit converters — persist the choice and re-render widgets with the new unit.
   const bindUnit = (id, key) => {
-    document.getElementById(id).addEventListener('change', (e) => {
+    document.getElementById(id).addEventListener("change", (e) => {
       cfg.units = { ...cfg.units, [key]: e.target.value };
       saveConfig();
       refreshAll();
     });
   };
-  bindUnit('cfg-temp-unit', 'temperature');
-  bindUnit('cfg-wind-unit', 'wind');
-  bindUnit('cfg-dist-unit', 'distance');
-  bindUnit('cfg-pressure-unit', 'pressure');
+  bindUnit("cfg-temp-unit", "temperature");
+  bindUnit("cfg-wind-unit", "wind");
+  bindUnit("cfg-dist-unit", "distance");
+  bindUnit("cfg-pressure-unit", "pressure");
   initTooltips();
 }
 
@@ -2113,29 +2554,41 @@ document.getElementById("moon-phase").innerHTML = moonDisc(bootFrac);
 document.getElementById("moon-label").textContent = describeMoon(bootFrac);
 renderClockCards();
 applyCardOrder();
+applyCardTitleLinks();
 injectDragHandles();
 applyWidgetVisibility();
 updateSmallClocks();
 initCardDrag();
 detectRegion();
 refreshAll();
-setInterval(() => { refreshAll(); }, refreshIntervalMs());
+setInterval(() => {
+  refreshAll();
+}, refreshIntervalMs());
 setInterval(tick, 1000);
+setInterval(updateAllStamps, 30_000);
 
 // Ask the browser for a precise location so flights/weather use where you are.
 if ("geolocation" in navigator) {
-  navigator.geolocation.getCurrentPosition(pos => {
-    cfg.lat = +pos.coords.latitude.toFixed(5);
-    cfg.lon = +pos.coords.longitude.toFixed(5);
-    cfg.locName = "you are here";
-    saveConfig();
-    bustApiCache();
-    updateLocChip();
-    detectRegion();
-    refreshAll();
-  }, () => { /* user denied or unavailable — keep defaults */ }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      cfg.lat = +pos.coords.latitude.toFixed(5);
+      cfg.lon = +pos.coords.longitude.toFixed(5);
+      cfg.locName = "you are here";
+      saveConfig();
+      bustApiCache();
+      updateLocChip();
+      detectRegion();
+      refreshAll();
+    },
+    () => {
+      /* user denied or unavailable — keep defaults */
+    },
+    { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 },
+  );
 }
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => { /* optional */ });
+  navigator.serviceWorker.register("sw.js").catch(() => {
+    /* optional */
+  });
 }

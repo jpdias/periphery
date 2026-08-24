@@ -32,7 +32,7 @@ export function corsHeaders() {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Vary": "Accept-Encoding, Origin, X-Periphery-Raw",
+    Vary: "Accept-Encoding, Origin, X-Periphery-Raw",
   };
 }
 
@@ -152,8 +152,8 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
@@ -165,19 +165,20 @@ const PT_BOXES = [
   // mainland
   { minLat: 36.95, maxLat: 42.15, minLon: -9.55, maxLon: -6.19 },
   // Madeira (+ Porto Santo)
-  { minLat: 32.36, maxLat: 33.12, minLon: -17.30, maxLon: -16.24 },
+  { minLat: 32.36, maxLat: 33.12, minLon: -17.3, maxLon: -16.24 },
   // Azores — western (Flores, Corvo)
-  { minLat: 39.32, maxLat: 39.75, minLon: -31.34, maxLon: -31.00 },
+  { minLat: 39.32, maxLat: 39.75, minLon: -31.34, maxLon: -31.0 },
   // Azores — central (Faial, Pico, S. Jorge, Graciosa, Terceira)
-  { minLat: 38.30, maxLat: 39.10, minLon: -28.90, maxLon: -27.00 },
+  { minLat: 38.3, maxLat: 39.1, minLon: -28.9, maxLon: -27.0 },
   // Azores — eastern (S. Miguel, Santa Maria)
-  { minLat: 36.85, maxLat: 37.95, minLon: -25.90, maxLon: -25.00 },
+  { minLat: 36.85, maxLat: 37.95, minLon: -25.9, maxLon: -25.0 },
 ];
 
 export function isInPortugal(lat, lon) {
   if (!isFinite(lat) || !isFinite(lon)) return false;
-  return PT_BOXES.some(b =>
-    lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon);
+  return PT_BOXES.some(
+    (b) => lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon,
+  );
 }
 
 // Find the nearest entry among an array of {lat, lon} records.
@@ -193,7 +194,19 @@ export function nearestTo(lat, lon, records) {
 
 // Build the query URL for an APA ArcGIS FeatureServer layer (used by RADNET
 // and QualAr). Wraps a where clause + outFields and returns features as JSON.
-export function apaQueryUrl(base, service, { where = "1=1", outFields = "*", orderBy = "", limit = 100, geometry = null, withGeometry = false, outSR = "4326" } = {}) {
+export function apaQueryUrl(
+  base,
+  service,
+  {
+    where = "1=1",
+    outFields = "*",
+    orderBy = "",
+    limit = 100,
+    geometry = null,
+    withGeometry = false,
+    outSR = "4326",
+  } = {},
+) {
   const params = {
     where,
     outFields,
@@ -220,7 +233,7 @@ export function apaQueryUrl(base, service, { where = "1=1", outFields = "*", ord
 // truthy results are cached; pass `isOk` to decide what counts as good (e.g.
 // don't cache upstream 429s). Always returns a Promise so callers can .then().
 const cacheStore = new Map();
-export function cachedFetch(key, ttlMs, fn, isOk = v => Boolean(v)) {
+export function cachedFetch(key, ttlMs, fn, isOk = (v) => Boolean(v)) {
   const now = Date.now();
   const hit = cacheStore.get(key);
   if (hit && now < hit.expiresAt) return Promise.resolve(hit.value);

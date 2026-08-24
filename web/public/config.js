@@ -4,7 +4,7 @@
 // which works under netlify dev and the light dev server).
 window.PERIPHERY_CONFIG = {
   apiBase: "https://prismatic-horse-4c465a.netlify.app", // Netlify API host; "" = same-origin
-  useApiProxy: true,    // route widget fetches through the API functions
+  useApiProxy: true, // route widget fetches through the API functions
   defaultLat: 41.17,
   defaultLon: -8.43,
   defaultFlightRange: 25,
@@ -30,5 +30,31 @@ window.PERIPHERY_CONFIG = {
     wind: "kmh",
     distance: "km",
     pressure: "hPa",
+  },
+  // External link templates per widget. Each {placeholder} resolves from
+  // item-level data first, then falls back to cfg.lat / cfg.lon. Set a
+  // value to null to disable linking for that widget.
+  cardUrls: {
+    weather: "https://www.windy.com/{lat}/{lon}",
+    forecast: "https://www.windy.com/{lat}/{lon}",
+    sunmoon: "https://www.timeanddate.com/sun/@{lat},{lon}",
+    flights: "https://globe.adsbexchange.com/?icao={hex}",
+    trains: "https://servicos.infraestruturasdeportugal.pt/pt-pt/estacoes?estacaoId={station}",
+    incidents: "https://prociv.gov.pt/pt/ocorrencias/",
+    seismic: "https://www.emsc-csem.org/",
+    lightning: "https://map.blitzortung.org/#6.09/{lat}/{lon}",
+    satellites: "https://www.n2yo.com/passes/?s={id}&lat={lat}&lng={lon}",
+    warnings: "https://www.ipma.pt/pt/otempo/prev-sam/",
+    fuel: "https://precoscombustiveis.dgEG.pt/",
+    albufeiras: "https://infoagua.apambiente.pt/pt/seca",
+    fx: "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
+    psi: "https://finance.yahoo.com/quote/PSI20.LS/",
+    solar: "https://www.swpc.noaa.gov/",
+    radiation: "https://safecast.org/radiation-map/",
+    airquality: "https://www.iqair.com/",
+    moon: "https://www.timeanddate.com/moon/@{lat},{lon}",
+    astro: "https://www.amsmeteors.org/meteor-showers/meteor-shower-calendar/",
+    ren: "https://datahub.ren.pt/en/",
+    propagation: "https://www.hamqsl.com/solarmap.php",
   },
 };
