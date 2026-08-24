@@ -50,6 +50,10 @@ cd ../server && npm run dev:light   # serves web/public + API on :8080
   never re-fire.
 - **Widget visibility toggle**: each widget can be hidden via the ⚙ settings; hidden
   widgets dim with reduced opacity and show a "hidden" tag.
+- **Satellite chip picker**: add/remove satellites by name + NORAD ID in the ⚙
+  settings. Default: ISS, Tiangong, Hubble. Chips replace the old textarea.
+- **Market index (PSI)**: configurable Yahoo Finance symbol — tracks PSI-20
+  (Lisbon), S&P 500, Dow, Nasdaq, or any ticker. Title updates dynamically.
 - **Loading spinners**: per-card spinner ring while data is fetching; global topbar
   ring during sync.
 - **PWA**: service worker with offline caching (bump `sw.js` cache version on deploy).

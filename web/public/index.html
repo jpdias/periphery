@@ -224,7 +224,7 @@
 
      <!-- Lisbon stock index -->
      <section class="card psi-card" data-widget="psi">
-       <h2 class="card-title" data-tip="Portuguese stock index PSI-20 market close">PSI <span class="sub" id="psi-sub"></span><span class="upd" id="upd-psi"></span></h2>
+       <h2 class="card-title" data-tip="Market index price and daily change via Yahoo Finance"><span id="psi-title">Market Index</span> <span class="sub" id="psi-sub"></span><span class="upd" id="upd-psi"></span></h2>
        <div class="psi-main">
          <div class="psi-big" id="psi-price">—</div>
          <div class="psi-side">
@@ -451,8 +451,12 @@
         <input type="checkbox" class="w-toggle" data-widget="satellites" aria-label="Show Satellites">
       </div>
       <div class="wcfg">
-        <label>One per line: name | NORAD ID
-          <textarea id="cfg-satellites" rows="4" spellcheck="false" placeholder="ISS | 25544&#10;Tiangong | 48274&#10;Hubble | 20580"></textarea>
+        <div id="sat-chips" class="chip-list"></div>
+        <label>Add satellite (name | NORAD ID)
+          <div class="row-grow">
+            <input type="text" id="cfg-sat-q" placeholder="e.g. ISS | 25544">
+            <button id="add-sat-btn" class="ghost">Add</button>
+          </div>
         </label>
       </div>
     </section>
@@ -521,10 +525,15 @@
 
     <section class="side-group wsec" data-widget="psi">
       <div class="wsec-head">
-        <span class="wsec-title">PSI (Lisbon index)</span>
-        <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show PSI">
+        <span class="wsec-title">Market Index</span>
+        <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show Market Index">
       </div>
-      <p class="hint">PSI-20 level & change (Yahoo Finance) — Portugal only</p>
+      <div class="wcfg">
+        <label>Yahoo Finance symbol
+          <input type="text" id="cfg-psi-symbol" placeholder="e.g. PSI20.LS, ^GSPC, ^DJI">
+        </label>
+        <p class="hint">PSI-20 (Lisbon), ^GSPC (S&P 500), ^DJI (Dow), ^IXIC (Nasdaq), ^FTSE (FTSE 100)</p>
+      </div>
     </section>
 
     <section class="side-group">

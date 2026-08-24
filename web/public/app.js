@@ -16,6 +16,7 @@ let cfg = {
   ipCity: "",
   uptimeSites: D.defaultUptimeSites ?? [],
   satellites: D.defaultSatellites ?? [],
+  psiSymbol: D.psiSymbol ?? "PSI20.LS",
   clocks: D.defaultClocks ?? [],
   hiddenWidgets: D.hiddenWidgets ?? [],
   cardOrder: D.defaultCardOrder ?? [],
@@ -366,7 +367,7 @@ function applyWidgetVisibility() {
     // Portugal-only widgets don't apply when the observer is outside the country.
     if (
       outsidePT &&
-      ["trains", "incidents", "warnings", "fuel", "albufeiras", "ren", "psi"].includes(name)
+      ["trains", "incidents", "warnings", "fuel", "albufeiras", "ren"].includes(name)
     )
       show = false;
     // Small clocks also need a configured timezone to be useful.
@@ -394,7 +395,8 @@ function applyCardOrder() {
 function applyCardTitleLinks() {
   document.querySelectorAll("#grid > .card[data-widget]").forEach((card) => {
     const name = card.dataset.widget;
-    const url = resolveCardUrl(name);
+    const extras = name === "psi" ? { symbol: cfg.psiSymbol } : {};
+    const url = resolveCardUrl(name, extras);
     const title = card.querySelector(".card-title");
     if (title && url) {
       title.dataset.url = url;
@@ -1977,11 +1979,12 @@ async function loadFx() {
   }
 }
 
-// ---- Lisbon stock index (PSI) --------------------------------------------
+// ---- Market index (PSI / any Yahoo Finance symbol) ----------------------------
 
 async function loadPsi() {
   try {
-    const { data } = await apiGet("psi");
+    const { data } = await apiGet("psi", { symbol: cfg.psiSymbol });
+    document.getElementById("psi-title").textContent = data.name || data.symbol || "Index";
     document.getElementById("psi-sub").textContent = data.symbol || "";
     const big = document.getElementById("psi-price");
     big.textContent =
@@ -2266,8 +2269,9 @@ function openSettings() {
   document.getElementById("cfg-station-name").value = cfg.ipStationName;
   const upBox = document.getElementById("cfg-uptime-sites");
   if (upBox) upBox.value = (cfg.uptimeSites || []).map((s) => `${s.label} | ${s.url}`).join("\n");
-  const satBox = document.getElementById("cfg-satellites");
-  if (satBox) satBox.value = (cfg.satellites || []).map((s) => `${s.name} | ${s.id}`).join("\n");
+  const psiSym = document.getElementById("cfg-psi-symbol");
+  if (psiSym) psiSym.value = cfg.psiSymbol || "";
+  renderSatChips();
   renderSmallClockConfigs();
   renderWidgetToggles();
   renderAlertToggles();
@@ -2301,18 +2305,8 @@ function saveSettings() {
         return { label: l, url: l };
       });
   }
-  const satBox = document.getElementById("cfg-satellites");
-  if (satBox) {
-    cfg.satellites = satBox.value
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => {
-        const i = l.indexOf("|");
-        if (i > 0) return { name: l.slice(0, i).trim(), id: l.slice(i + 1).trim() };
-        return { name: l, id: l };
-      });
-  }
+  const psiSym = document.getElementById("cfg-psi-symbol");
+  if (psiSym) cfg.psiSymbol = psiSym.value.trim() || "PSI20.LS";
   cfg.clocks = [...document.querySelectorAll(".clk-row")].map((row) => ({
     label: row.querySelector('input[type="text"]').value.trim(),
     tz: row.querySelector("select").value,
@@ -2393,7 +2387,7 @@ function refreshAll() {
   if (widgetVisible("fuel") && !outsidePT) loadFuel();
   if (widgetVisible("albufeiras") && !outsidePT) loadAlbufeiras();
   if (widgetVisible("fx")) loadFx();
-  if (widgetVisible("psi") && !outsidePT) loadPsi();
+  if (widgetVisible("psi")) loadPsi();
   if (widgetVisible("system")) loadSystem();
   if (widgetVisible("propagation")) loadPropagation();
 }
@@ -2442,6 +2436,43 @@ function clearStation() {
   document.getElementById("cfg-station-name").value = "";
   document.getElementById("cfg-station-q").value = "";
   document.getElementById("station-results").innerHTML = "";
+}
+
+// ---- Satellite chip picker ---------------------------------------------------
+
+function renderSatChips() {
+  const box = document.getElementById("sat-chips");
+  if (!box) return;
+  box.innerHTML = "";
+  (cfg.satellites || []).forEach((s, i) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `${esc(s.name)} <span class="chip-id">${esc(s.id)}</span><button class="chip-x" data-sat-idx="${i}" title="Remove" aria-label="Remove ${esc(s.name)}">&times;</button>`;
+    box.appendChild(chip);
+  });
+}
+
+function addSatellite() {
+  const input = document.getElementById("cfg-sat-q");
+  const val = input.value.trim();
+  if (!val) return;
+  const i = val.indexOf("|");
+  const name = (i > 0 ? val.slice(0, i) : val).trim();
+  const id = (i > 0 ? val.slice(i + 1) : val).trim();
+  if (!name || !id) return;
+  if (!cfg.satellites) cfg.satellites = [];
+  if (cfg.satellites.some((s) => s.id === id)) {
+    input.value = "";
+    return;
+  }
+  cfg.satellites.push({ name, id });
+  input.value = "";
+  renderSatChips();
+}
+
+function removeSatellite(idx) {
+  cfg.satellites.splice(idx, 1);
+  renderSatChips();
 }
 
 // Tooltip system: show/hide #tip on elements with data-tip attribute.
@@ -2506,6 +2537,17 @@ function wireEvents() {
       e.preventDefault();
       searchStations();
     }
+  });
+  document.getElementById("add-sat-btn").addEventListener("click", addSatellite);
+  document.getElementById("cfg-sat-q").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addSatellite();
+    }
+  });
+  document.getElementById("sat-chips").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-sat-idx]");
+    if (btn) removeSatellite(parseInt(btn.dataset.satIdx, 10));
   });
   // Delegated: handles both static sections and dynamically created clock rows.
   document.getElementById("settings-panel").addEventListener("change", (e) => {

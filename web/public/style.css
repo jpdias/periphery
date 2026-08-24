@@ -1233,6 +1233,21 @@ li[data-url]:hover { opacity: 0.75; }
 }
 .stnlist .stn:hover { border-color: var(--accent); }
 
+/* ---- Chip picker (satellites) --------------------------------------------- */
+
+.chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; min-height: 24px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--card2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 3px 8px; font-size: 12px; color: var(--text);
+}
+.chip-id { color: var(--muted); font-size: 11px; }
+.chip-x {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px; margin-left: 2px;
+}
+.chip-x:hover { color: var(--red); }
+
 /* ---- Scrollbar --------------------------------------------------------- */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
