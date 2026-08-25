@@ -23,7 +23,7 @@ export default async function handler(event) {
   const q = params.q.trim();
   if (q.length < 2) return fail(400, "Query must be at least 2 characters");
 
-  const url = `${CELESTRAK_BASE}?search=${encodeURIComponent(q)}&format=json&limit=20`;
+  const url = `${CELESTRAK_BASE}?NAME=${encodeURIComponent(q)}&FORMAT=json`;
 
   const { status, body } = await upstreamJson(url, { timeoutMs: 6000 });
   const raw = rawResponse(event, status, body);
@@ -34,7 +34,9 @@ export default async function handler(event) {
 
   const sats = [];
   const items = Array.isArray(body) ? body : [];
+  const limit = 20;
   for (const s of items) {
+    if (sats.length >= limit) break;
     const id = String(s.NORAD_CAT_ID || "");
     const name = String(s.OBJECT_NAME || "").trim();
     if (id && name) sats.push({ id, name });
