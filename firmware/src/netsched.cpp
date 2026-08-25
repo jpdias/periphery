@@ -18,12 +18,16 @@ static const unsigned long COOLDOWN_MS = 500;
 static unsigned long cooldownUntil = 0;
 
 // Minimum contiguous heap required before any new TLS fetch can start.
-static const uint32_t SCHED_MIN_HEAP = 10240;
+static const uint32_t SCHED_MIN_HEAP = 8192;
 
 // Consecutive failure counter. If every fetcher keeps failing (heap too low,
 // network down, etc.), reboot the device instead of spinning forever.
 static int consecutiveFails = 0;
 static const int MAX_CONSECUTIVE_FAILS = 6;
+
+// Watchdog: reboot if no successful fetch in 20 minutes.
+static unsigned long lastSuccessMs = 0;
+static const unsigned long WATCHDOG_MS = 20UL * 60 * 1000;
 
 static bool any_busy() {
   for (int i = 0; i < NS_COUNT; i++) {
@@ -97,6 +101,7 @@ void netsched_done(NS_Slot s) {
 
 void netsched_record_success() {
   consecutiveFails = 0;
+  lastSuccessMs = millis();
 }
 
 void netsched_record_failure() {
@@ -113,6 +118,13 @@ void netsched_advance() {
   if (millis() < cooldownUntil) return;    // respect cooldown
   // Heap guard: don't start a new fetch if fragmented.
   if (ESP.getMaxFreeBlockSize() < SCHED_MIN_HEAP) return;
+  // Watchdog: if no successful fetch in 20 minutes, reboot.
+  if (lastSuccessMs > 0 && millis() - lastSuccessMs > WATCHDOG_MS) {
+    mlog.printf("[SCHED] watchdog: no success in %lus, rebooting\n",
+                (unsigned long)((millis() - lastSuccessMs) / 1000));
+    delay(200);
+    ESP.restart();
+  }
   // Find the next due slot that can actually start.  Skip past slots that are
   // due but blocked (e.g. heap too low) so the cascade doesn't stall behind
   // a single memory-hungry fetcher.
