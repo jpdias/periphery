@@ -10,31 +10,24 @@ import {
 } from "satellite.js";
 
 // Returns satellites currently overhead at the observer's position.
-// Fetches TLEs for a curated set of bright/interesting satellites from
-// tle.ivanstanojevic.me (free, no key), propagates with SGP4, and returns
-// those with elevation > 0, sorted by highest elevation first.
+// Fetches TLEs for known bright satellites from tle.ivanstanojevic.me
+// (free, no key), propagates each with SGP4, and returns those with
+// elevation > 0, sorted highest first.
 
 const TLE_API = "https://tle.ivanstanojevic.me/api/tle";
 
-const INTERESTING = [
-  { id: "25544", name: "ISS" },
-  { id: "48274", name: "Tiangong" },
-  { id: "20580", name: "Hubble" },
-  { id: "43013", name: "Starlink-1130" },
-  { id: "43014", name: "Starlink-1131" },
-  { id: "43015", name: "Starlink-1132" },
-  { id: "52690", name: "Starlink-4292" },
-  { id: "52691", name: "Starlink-4293" },
-  { id: "52692", name: "Starlink-4294" },
-  { id: "28654", name: "NOAA 18" },
-  { id: "33591", name: "NOAA 19" },
-  { id: "28651", name: "METOP-B" },
-  { id: "40014", name: "GOES-16" },
-  { id: "40015", name: "GOES-17" },
-  { id: "54216", name: "GOES-18" },
-  { id: "49015", name: "Cosmos 2551" },
-  { id: "41770", name: "PeruSat-1" },
-  { id: "42917", name: "PlanetScope 1646" },
+// Curated list of bright / interesting satellites (ISS, stations, weather,
+// Starlink constellation). More sats = higher chance of overhead ones.
+const SAT_IDS = [
+  "25544", "48274", "20580", // ISS, Tiangong, Hubble
+  "28654", "33591", "43013", "28651", // NOAA 18/19, NOAA 20, MetOp-B
+  "54216", // CSS Mengtian
+  "44713", "44914", "44724", "44718", "44714", // Starlink
+  "49141", "49140", "52550", "47554", "47752", // Starlink
+  "52690", "52691", "52692", "59618", "58233", // Starlink
+  "60197", "60061", "53550", "56704", "57463", // Starlink
+  "59538", "45386", "68823", "43015", "40014", // Starlink, MIRATA
+  "41770", "42917", // PeruSat, QZS-3
 ];
 
 function elevationAt(satrec, observerGd, date) {
@@ -47,10 +40,8 @@ function elevationAt(satrec, observerGd, date) {
 
 async function fetchTle(id) {
   try {
-    const { status, body } = await upstreamJson(`${TLE_API}/${id}`, { timeoutMs: 4000 });
-    if (status === 200 && body && body.line1 && body.line2) {
-      return { line1: body.line1, line2: body.line2, name: body.name };
-    }
+    const { status, body } = await upstreamJson(`${TLE_API}/${id}`, { timeoutMs: 5000 });
+    if (status === 200 && body && body.line1 && body.line2) return body;
   } catch { /* skip */ }
   return null;
 }
@@ -75,16 +66,19 @@ export default async function handler(event) {
 
   const now = new Date();
 
-  const tles = await Promise.all(INTERESTING.map((s) => fetchTle(s.id).then((t) => ({ ...s, tle: t }))));
+  // Fetch all TLEs in parallel
+  const tles = await Promise.all(
+    SAT_IDS.map((id) => fetchTle(id).then((t) => ({ id, tle: t }))),
+  );
 
   const results = [];
-  for (const s of tles) {
-    if (!s.tle) continue;
+  for (const { id, tle } of tles) {
+    if (!tle) continue;
     try {
-      const satrec = twoline2satrec(s.tle.line1, s.tle.line2);
+      const satrec = twoline2satrec(tle.line1, tle.line2);
       const elev = elevationAt(satrec, observerGd, now);
       if (elev > 0) {
-        results.push({ id: s.id, name: s.tle.name || s.name, elev: Math.round(elev) });
+        results.push({ id, name: tle.name || id, elev: Math.round(elev) });
       }
     } catch { /* skip */ }
   }
