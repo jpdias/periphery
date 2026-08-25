@@ -37,6 +37,7 @@ export default async function handler(event) {
   const sats = [];
   const above = body.above || [];
   for (const s of above) {
+    if (sats.length >= 10) break;
     const id = String(s.satid || "");
     const name = String(s.satname || "").trim();
     if (id && name) sats.push({ id, name });
