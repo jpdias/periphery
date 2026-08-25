@@ -7,22 +7,27 @@ import {
   upstreamJson,
 } from "./utils.js";
 
-// GET /api/satsearch?q=<name> -> satellite name search via tle.ivanstanojevic.me.
-// Fast, free, no API key. Returns [{id, name}] capped at 20 results.
-const TLE_SEARCH = "https://api.tle.ivanstanojevic.me/api/tle/search";
+// GET /api/satsearch?lat=XX&lon=YY -> satellites currently above the observer.
+// Uses N2YO's free "above" endpoint (no API key needed for this endpoint).
+// Returns [{id, name}] of visible satellites.
+const N2YO_ABOVE = "https://api.n2yo.com/rest/v1/satellite/above";
 
 export default async function handler(event) {
   event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
   if (event.httpMethod !== "GET") return fail(405, "Method not allowed");
 
-  const { error, params } = requireParams(event, ["q"]);
+  const { error, params } = requireParams(event, ["lat", "lon"]);
   if (error) return fail(400, error);
 
-  const q = params.q.trim();
-  if (q.length < 2) return fail(400, "Query must be at least 2 characters");
+  const lat = Number(params.lat);
+  const lon = Number(params.lon);
+  if (!isFinite(lat) || !isFinite(lon)) return fail(400, "Invalid coordinates");
 
-  const url = `${TLE_SEARCH}?query=${encodeURIComponent(q)}&limit=20`;
+  const radius = params.radius || 90;
+  const cat = params.cat || 0; // 0 = all categories
+
+  const url = `${N2YO_ABOVE}/${lat}/${lon}/0/${radius}/${cat}`;
 
   const { status, body } = await upstreamJson(url, { timeoutMs: 8000 });
   if (status !== 200 || !body) {
@@ -30,11 +35,11 @@ export default async function handler(event) {
   }
 
   const sats = [];
-  const items = body.data || [];
-  for (const s of items) {
-    const id = String(s.satelliteId || "");
-    const name = String(s.name || "").trim();
+  const above = body.above || [];
+  for (const s of above) {
+    const id = String(s.satid || "");
+    const name = String(s.satname || "").trim();
     if (id && name) sats.push({ id, name });
   }
-  return ok({ sats }, { ttl: 86400 });
+  return ok({ sats }, { ttl: 300 });
 }

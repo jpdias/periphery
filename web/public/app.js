@@ -2440,18 +2440,13 @@ function renderSatChips() {
 }
 
 async function searchSatellites() {
-  const q = document.getElementById("cfg-sat-q").value.trim();
   const box = document.getElementById("sat-results");
-  if (!q) {
-    box.innerHTML = `<span class="hint">type a satellite name first</span>`;
-    return;
-  }
-  box.innerHTML = `<span class="hint">searching…</span>`;
+  box.innerHTML = `<span class="hint">searching overhead…</span>`;
   try {
-    const { data } = await apiGet("satsearch", { q });
+    const { data } = await apiGet("satsearch", { lat: cfg.lat, lon: cfg.lon });
     const arr = data.sats || [];
     if (!arr.length) {
-      box.innerHTML = `<span class="hint">no matches — try ISS, Starlink, Hubble</span>`;
+      box.innerHTML = `<span class="hint">no satellites overhead right now — try again later</span>`;
       return;
     }
     box.innerHTML = "";
@@ -2599,12 +2594,6 @@ function wireEvents() {
     }
   });
   document.getElementById("search-sat-btn").addEventListener("click", searchSatellites);
-  document.getElementById("cfg-sat-q").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      searchSatellites();
-    }
-  });
   document.getElementById("add-sat-btn").addEventListener("click", addSatelliteManual);
   document.getElementById("cfg-sat-manual").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
