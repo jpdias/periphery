@@ -4,13 +4,13 @@ import {
   ok,
   fail,
   requireParams,
-  upstreamText,
+  upstreamJson,
 } from "./utils.js";
-import { CELESTRAK_BASE } from "./env.js";
 
-// GET /api/satsearch?q=<name> -> satellite name search proxy for Celestrak.
-// Fetches TLE format (compact) and extracts NORAD catalog number + name.
-// Returns [{id, name}] capped at 20 results.
+// GET /api/satsearch?q=<name> -> satellite name search via tle.ivanstanojevic.me.
+// Fast, free, no API key. Returns [{id, name}] capped at 20 results.
+const TLE_SEARCH = "https://api.tle.ivanstanojevic.me/api/tle/search";
+
 export default async function handler(event) {
   event = normalizeEvent(event);
   if (event.httpMethod === "OPTIONS") return handleOptions();
@@ -22,21 +22,19 @@ export default async function handler(event) {
   const q = params.q.trim();
   if (q.length < 2) return fail(400, "Query must be at least 2 characters");
 
-  const url = `${CELESTRAK_BASE}?NAME=${encodeURIComponent(q)}&FORMAT=tle`;
+  const url = `${TLE_SEARCH}?query=${encodeURIComponent(q)}&limit=20`;
 
-  const { status, body } = await upstreamText(url, { timeoutMs: 8000 });
+  const { status, body } = await upstreamJson(url, { timeoutMs: 8000 });
   if (status !== 200 || !body) {
     return fail(502, "Upstream satellite search failed", { upstreamStatus: status });
   }
 
-  const lines = body.split("\n").map((l) => l.trimEnd());
   const sats = [];
-  for (let i = 0; i < lines.length && sats.length < 20; i++) {
-    if (/^[12] /.test(lines[i]) && i > 0) {
-      const name = lines[i - 1].trim();
-      const catnr = lines[i].substring(2, 7).trim();
-      if (name && catnr) sats.push({ id: catnr, name });
-    }
+  const items = body.data || [];
+  for (const s of items) {
+    const id = String(s.satelliteId || "");
+    const name = String(s.name || "").trim();
+    if (id && name) sats.push({ id, name });
   }
   return ok({ sats }, { ttl: 86400 });
 }
