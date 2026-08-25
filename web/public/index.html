@@ -172,7 +172,7 @@
 
     <!-- Satellites -->
     <section class="card satellites-card" data-widget="satellites">
-      <h2 class="card-title" data-tip="Visible satellite passes (ISS, Tiangong, Hubble) computed for your location">Satellites <span class="sub" id="sat-count"></span><span class="upd" id="upd-satellites"></span></h2>
+      <h2 class="card-title" data-tip="Satellites currently overhead at your location">Satellites <span class="sub" id="sat-count"></span><span class="upd" id="upd-satellites"></span></h2>
       <ul class="sat-list" id="sat-list"></ul>
     </section>
 
@@ -446,24 +446,6 @@
         <label>Lightning radius (km)
           <input type="number" step="1" id="cfg-lightning-radius" value="500">
         </label>
-      </div>
-    </section>
-
-    <section class="side-group wsec" data-widget="satellites">
-      <div class="wsec-head">
-        <span class="wsec-title">Satellites</span>
-        <input type="checkbox" class="w-toggle" data-widget="satellites" aria-label="Show Satellites">
-      </div>
-      <div class="wcfg">
-        <div id="sat-chips" class="chip-list"></div>
-        <p class="hint">Overhead now</p>
-        <div id="sat-results" class="stnlist"></div>
-        <label>Or add manually (name | NORAD ID)
-          <input type="text" id="cfg-sat-manual" placeholder="e.g. ISS | 25544">
-        </label>
-        <div class="btn-row">
-          <button id="add-sat-btn" class="ghost">Add</button>
-        </div>
       </div>
     </section>
 

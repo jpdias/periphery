@@ -15,7 +15,6 @@ let cfg = {
   locName: "",
   ipCity: "",
   uptimeSites: D.defaultUptimeSites ?? [],
-  satellites: D.defaultSatellites ?? [],
   psiSymbol: D.psiSymbol ?? "PSI20.LS",
   clocks: D.defaultClocks ?? [],
   hiddenWidgets: D.hiddenWidgets ?? [],
@@ -187,7 +186,7 @@ const API_TTL_MS = {
   uptime: 15 * 60_000,
   lightning: 3 * 60_000,
   warnings: 12 * 60 * 60_000, // weather warnings — twice a day is enough
-  satellites: 30 * 60_000,
+  satellites: 5 * 60_000,
   ren: 30 * 60_000,
   seismic: 15 * 60_000,
   fuel: 24 * 60 * 60_000, // fuel prices — once a day
@@ -1668,72 +1667,25 @@ async function loadWarnings() {
 
 // ---- Satellites (SGP4 next passes) --------------------------------------
 
-function fmtSatTime(iso) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
-
 async function loadSatellites() {
   const el = document.getElementById("sat-list");
   try {
-    const { data } = await apiGet("satellites", {
-      lat: cfg.lat,
-      lon: cfg.lon,
-      sats: JSON.stringify(cfg.satellites),
-    });
-    const sats = data.satellites || [];
-    document.getElementById("sat-count").textContent = data.satellites
-      ? `${sats.length} tracked`
-      : "";
+    const { data } = await apiGet("satsearch", { lat: cfg.lat, lon: cfg.lon });
+    const sats = data.sats || [];
+    document.getElementById("sat-count").textContent = sats.length ? `${sats.length} overhead` : "";
     if (!sats.length) {
-      el.innerHTML = `<div class="empty">No satellites configured (see settings)</div>`;
+      el.innerHTML = `<div class="empty">None overhead right now</div>`;
       stamp("satellites");
       return;
     }
     el.innerHTML = sats
       .map((s) => {
         const url = resolveCardUrl("satellites", { id: s.id });
-        if (s.error || !s.next) {
-          const content = `<span class="sat-name">${esc(s.name)}</span><span class="sat-none">${s.error || "no pass in 48h"}</span>`;
-          return url ? `<li data-url="${esc(url)}">${content}</li>` : `<li>${content}</li>`;
-        }
-        const p = s.next;
-        const mins = p.duration_min;
-        const li = `<span class="sat-name">${esc(s.name)}</span>
-        <span class="sat-pass">
-          <span class="sat-when">${fmtSatTime(p.rise)}</span>
-          <span class="sat-meta"> · elev ${p.max_elev}° · ${mins}min</span>
-        </span>`;
+        const li = `<span class="sat-name">${esc(s.name)}</span><span class="sat-meta">${esc(s.id)}</span>`;
         return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
       })
       .join("");
     stamp("satellites");
-    // Smart TTL: refresh when the next pass has ended — the display is stale
-    // the moment the earliest upcoming pass sets.
-    let nextSet = Infinity;
-    for (const s of sats) {
-      if (s.next && s.next.set) {
-        const t = Date.parse(s.next.set);
-        if (isFinite(t) && t < nextSet) nextSet = t;
-      }
-    }
-    if (isFinite(nextSet)) {
-      const ttl = Math.max(60_000, Math.min(nextSet - Date.now(), 12 * 3600 * 1000));
-      touchCache(
-        "satellites",
-        { lat: cfg.lat, lon: cfg.lon, sats: JSON.stringify(cfg.satellites) },
-        ttl,
-      );
-    }
   } catch (e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
   }
@@ -2270,8 +2222,6 @@ function openSettings() {
   renderUpChips();
   const psiSym = document.getElementById("cfg-psi-symbol");
   if (psiSym) psiSym.value = cfg.psiSymbol || "";
-  renderSatChips();
-  fetchOverheadSats();
   renderSmallClockConfigs();
   renderWidgetToggles();
   renderAlertToggles();
@@ -2426,74 +2376,6 @@ function clearStation() {
   document.getElementById("station-results").innerHTML = "";
 }
 
-// ---- Satellite chip picker ---------------------------------------------------
-
-function renderSatChips() {
-  const box = document.getElementById("sat-chips");
-  if (!box) return;
-  box.innerHTML = "";
-  (cfg.satellites || []).forEach((s, i) => {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.innerHTML = `${esc(s.name)} <span class="chip-id">${esc(s.id)}</span><button class="chip-x" data-sat-idx="${i}" title="Remove" aria-label="Remove ${esc(s.name)}">&times;</button>`;
-    box.appendChild(chip);
-  });
-}
-
-async function fetchOverheadSats() {
-  const box = document.getElementById("sat-results");
-  box.innerHTML = `<span class="hint">loading overhead…</span>`;
-  try {
-    const { data } = await apiGet("satsearch", { lat: cfg.lat, lon: cfg.lon });
-    const arr = data.sats || [];
-    if (!arr.length) {
-      box.innerHTML = `<span class="hint">none overhead right now</span>`;
-      return;
-    }
-    box.innerHTML = "";
-    arr.forEach((s) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "stn";
-      b.textContent = `${s.name} [${s.id}]`;
-      b.onclick = () => {
-        if (!cfg.satellites) cfg.satellites = [];
-        if (!cfg.satellites.some((x) => x.id === s.id)) {
-          cfg.satellites.push({ name: s.name, id: s.id });
-          renderSatChips();
-        }
-        box.innerHTML = `<span class="hint">added ${s.name} — click Save</span>`;
-      };
-      box.appendChild(b);
-    });
-  } catch (e) {
-    box.innerHTML = `<span class="hint">search failed: ${e.message}</span>`;
-  }
-}
-
-function addSatelliteManual() {
-  const input = document.getElementById("cfg-sat-manual");
-  const val = input.value.trim();
-  if (!val) return;
-  const i = val.indexOf("|");
-  const name = (i > 0 ? val.slice(0, i) : val).trim();
-  const id = (i > 0 ? val.slice(i + 1) : val).trim();
-  if (!name || !id) return;
-  if (!cfg.satellites) cfg.satellites = [];
-  if (cfg.satellites.some((s) => s.id === id)) {
-    input.value = "";
-    return;
-  }
-  cfg.satellites.push({ name, id });
-  input.value = "";
-  renderSatChips();
-}
-
-function removeSatellite(idx) {
-  cfg.satellites.splice(idx, 1);
-  renderSatChips();
-}
-
 // ---- Uptime chip picker ------------------------------------------------------
 
 function renderUpChips() {
@@ -2593,17 +2475,6 @@ function wireEvents() {
       e.preventDefault();
       searchStations();
     }
-  });
-  document.getElementById("add-sat-btn").addEventListener("click", addSatelliteManual);
-  document.getElementById("cfg-sat-manual").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addSatelliteManual();
-    }
-  });
-  document.getElementById("sat-chips").addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-sat-idx]");
-    if (btn) removeSatellite(parseInt(btn.dataset.satIdx, 10));
   });
   document.getElementById("add-up-btn").addEventListener("click", addUptimeSite);
   document.getElementById("cfg-up-q").addEventListener("keydown", (e) => {

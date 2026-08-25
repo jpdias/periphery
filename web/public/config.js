@@ -17,11 +17,6 @@ window.PERIPHERY_CONFIG = {
   ],
   earthquakeRadius: 1500,
   lightningRadius: 500,
-  defaultSatellites: [
-    { id: "25544", name: "ISS" },
-    { id: "48274", name: "Tiangong" },
-    { id: "20580", name: "Hubble" },
-  ],
   psiSymbol: "PSI20.LS",
   defaultClocks: [],
   hiddenWidgets: [],

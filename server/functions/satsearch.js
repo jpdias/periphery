@@ -1,11 +1,4 @@
-import {
-  normalizeEvent,
-  handleOptions,
-  ok,
-  fail,
-  requireParams,
-  upstreamJson,
-} from "./utils.js";
+import { normalizeEvent, handleOptions, ok, fail, requireParams, upstreamJson } from "./utils.js";
 
 // GET /api/satsearch?lat=XX&lon=YY -> satellites currently above the observer.
 // Uses N2YO's free "above" endpoint (no API key needed for this endpoint).

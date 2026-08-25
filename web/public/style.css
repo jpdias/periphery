@@ -1233,7 +1233,7 @@ li[data-url]:hover { opacity: 0.75; }
 }
 .stnlist .stn:hover { border-color: var(--accent); }
 
-/* ---- Chip picker (satellites) --------------------------------------------- */
+/* ---- Chip picker ---------------------------------------------------------- */
 
 .chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; min-height: 24px; }
 .chip {
