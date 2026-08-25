@@ -15,7 +15,6 @@ let cfg = {
   locName: "",
   ipCity: "",
   uptimeSites: D.defaultUptimeSites ?? [],
-  psiSymbol: D.psiSymbol ?? "PSI20.LS",
   clocks: D.defaultClocks ?? [],
   hiddenWidgets: D.hiddenWidgets ?? [],
   cardOrder: D.defaultCardOrder ?? [],
@@ -394,7 +393,7 @@ function applyCardOrder() {
 function applyCardTitleLinks() {
   document.querySelectorAll("#grid > .card[data-widget]").forEach((card) => {
     const name = card.dataset.widget;
-    const extras = name === "psi" ? { symbol: cfg.psiSymbol } : {};
+    const extras = {};
     const url = resolveCardUrl(name, extras);
     const title = card.querySelector(".card-title");
     if (title && url) {
@@ -1934,37 +1933,33 @@ async function loadFx() {
 // ---- Market index (PSI / any Yahoo Finance symbol) ----------------------------
 
 async function loadPsi() {
+  const el = document.getElementById("psi-list");
   try {
-    const { data } = await apiGet("psi", { symbol: cfg.psiSymbol });
-    document.getElementById("psi-title").textContent = data.name || data.symbol || "Index";
-    document.getElementById("psi-sub").textContent = data.symbol || "";
-    const big = document.getElementById("psi-price");
-    big.textContent =
-      data.price != null
-        ? data.price.toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-        : "—";
-    big.classList.toggle("down", data.change != null && data.change < 0);
-    const chg = data.change_pct;
-    document.getElementById("psi-change").innerHTML =
-      chg == null
-        ? "—"
-        : `<span class="${chg >= 0 ? "up" : "down"}">${chg >= 0 ? "+" : ""}${chg}%</span>`;
-    const range = document.getElementById("psi-range");
-    range.innerHTML = [
-      data.day_low != null
-        ? `day ${data.day_low.toLocaleString()}–${data.day_high?.toLocaleString()}`
-        : "",
-      data.fifty_two_week?.low != null
-        ? `52w ${data.fifty_two_week.low.toLocaleString()}–${data.fifty_two_week.high?.toLocaleString()}`
-        : "",
-    ]
-      .filter(Boolean)
-      .map((t) => `<span class="psi-range-item">${t}</span>`)
+    const { data } = await apiGet("psi");
+    const indexes = data.indexes || [];
+    if (!indexes.length) {
+      el.innerHTML = `<div class="empty">No data</div>`;
+      stamp("psi");
+      return;
+    }
+    el.innerHTML = indexes
+      .map((idx) => {
+        const chg = idx.change_pct;
+        const cls = chg == null ? "" : chg >= 0 ? "up" : "down";
+        const arrow = chg == null ? "" : chg >= 0 ? "▲" : "▼";
+        const pct = chg == null ? "—" : `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%`;
+        const price =
+          idx.price != null
+            ? idx.price.toLocaleString([], { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : "—";
+        const url = resolveCardUrl("psi", { symbol: idx.symbol });
+        const li = `<span class="psi-name">${esc(idx.short)}</span><span class="psi-price">${price}</span><span class="psi-chg ${cls}">${arrow} ${pct}</span>`;
+        return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
+      })
       .join("");
     stamp("psi");
   } catch (e) {
-    document.getElementById("psi-price").textContent = "—";
-    document.getElementById("psi-change").textContent = e.message;
+    el.innerHTML = `<div class="empty">${e.message}</div>`;
   }
 }
 
@@ -2220,8 +2215,6 @@ function openSettings() {
   document.getElementById("cfg-station").value = cfg.ipStation;
   document.getElementById("cfg-station-name").value = cfg.ipStationName;
   renderUpChips();
-  const psiSym = document.getElementById("cfg-psi-symbol");
-  if (psiSym) psiSym.value = cfg.psiSymbol || "";
   renderSmallClockConfigs();
   renderWidgetToggles();
   renderAlertToggles();
@@ -2243,8 +2236,6 @@ function saveSettings() {
     parseInt(document.getElementById("cfg-quake-radius").value, 10) || cfg.earthquakeRadius;
   cfg.lightningRadius =
     parseInt(document.getElementById("cfg-lightning-radius").value, 10) || cfg.lightningRadius;
-  const psiSym = document.getElementById("cfg-psi-symbol");
-  if (psiSym) cfg.psiSymbol = psiSym.value.trim() || "PSI20.LS";
   cfg.clocks = [...document.querySelectorAll(".clk-row")].map((row) => ({
     label: row.querySelector('input[type="text"]').value.trim(),
     tz: row.querySelector("select").value,

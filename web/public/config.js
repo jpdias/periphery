@@ -17,7 +17,6 @@ window.PERIPHERY_CONFIG = {
   ],
   earthquakeRadius: 1500,
   lightningRadius: 500,
-  psiSymbol: "PSI20.LS",
   defaultClocks: [],
   hiddenWidgets: [],
   alerts: ["incidents", "warnings"],

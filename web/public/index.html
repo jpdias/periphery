@@ -224,16 +224,9 @@
 
      <!-- Lisbon stock index -->
      <section class="card psi-card" data-widget="psi">
-       <h2 class="card-title" data-tip="Market index price and daily change via Yahoo Finance"><span id="psi-title">Market Index</span> <span class="sub" id="psi-sub"></span><span class="upd" id="upd-psi"></span></h2>
-       <div class="psi-main">
-         <div class="psi-big" id="psi-price">—</div>
-         <div class="psi-side">
-           <div class="psi-label" id="psi-change">—</div>
-           <div class="psi-meta" id="psi-meta"></div>
-         </div>
-       </div>
-       <div class="psi-range" id="psi-range"></div>
-     </section>
+        <h2 class="card-title" data-tip="Global market indexes via Yahoo Finance">Markets <span class="upd" id="upd-psi"></span></h2>
+        <ul class="psi-list" id="psi-list"></ul>
+      </section>
 
      <!-- Propagation -->
      <section class="card propagation-card" data-widget="propagation">
@@ -513,14 +506,8 @@
 
     <section class="side-group wsec" data-widget="psi">
       <div class="wsec-head">
-        <span class="wsec-title">Market Index</span>
-        <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show Market Index">
-      </div>
-      <div class="wcfg">
-        <label>Yahoo Finance symbol
-          <input type="text" id="cfg-psi-symbol" placeholder="e.g. PSI20.LS, ^GSPC, ^DJI">
-        </label>
-        <p class="hint">PSI-20 (Lisbon), ^GSPC (S&P 500), ^DJI (Dow), ^IXIC (Nasdaq), ^FTSE (FTSE 100)</p>
+        <span class="wsec-title">Markets</span>
+        <input type="checkbox" class="w-toggle" data-widget="psi" aria-label="Show Markets">
       </div>
     </section>
 

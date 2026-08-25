@@ -348,12 +348,12 @@ li[data-url]:hover { opacity: 0.75; }
 
 /* ---- Space weather (solar) --------------------------------------------- */
 
-.solar-main, .rad-main, .air-main, .ren-main, .psi-main {
+.solar-main, .rad-main, .air-main, .ren-main {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-.solar-big, .rad-big, .air-big, .ren-big, .psi-big {
+.solar-big, .rad-big, .air-big, .ren-big {
   font-size: 44px;
   font-weight: 700;
   line-height: 1;
@@ -364,7 +364,7 @@ li[data-url]:hover { opacity: 0.75; }
 .solar-big.cls-m { color: var(--warn); text-shadow: 0 0 16px rgba(255, 176, 32, 0.5); }
 .solar-big.cls-c { color: var(--accent); text-shadow: 0 0 14px rgba(254, 92, 53, 0.5); }
 .solar-big.cls-b { color: var(--muted); }
-.solar-side, .rad-side, .air-side, .ren-side, .psi-side {
+.solar-side, .rad-side, .air-side, .ren-side {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -506,7 +506,7 @@ li[data-url]:hover { opacity: 0.75; }
 /* ---- Incidents --------------------------------------------------------- */
 
 .incident-list, .warning-list, .train-list, .flight-list, .astro-list,
-.uptime-list, .bolt-list, .sat-list, .seismic-list, .fuel-list, .fx-list,
+.uptime-list, .bolt-list, .sat-list, .seismic-list, .fuel-list, .fx-list, .psi-list,
 .propagation-list { list-style: none; margin: 0; padding: 0; }
 .incident-list li {
   padding: 8px 0;
@@ -830,14 +830,21 @@ li[data-url]:hover { opacity: 0.75; }
 
 /* ---- PSI --------------------------------------------------------------- */
 
-.psi-big {
-  text-shadow: 0 0 14px rgba(254, 92, 53, 0.25);
+.psi-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
 }
-.psi-big.down { color: var(--danger); text-shadow: 0 0 14px rgba(255, 59, 92, 0.4); }
-.psi-label { font-size: 14px; font-weight: 600; font-family: var(--mono); }
-.psi-meta { color: var(--muted); font-size: 11px; font-family: var(--mono); }
-.psi-range { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; font-family: var(--mono); }
-.psi-range-item { color: var(--muted); font-size: 11px; }
+.psi-list li:last-child { border-bottom: none; }
+.psi-name { font-weight: 600; color: var(--text); min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.psi-price { color: var(--text); font-variant-numeric: tabular-nums; flex: 0 0 auto; min-width: 70px; text-align: right; }
+.psi-chg { font-size: 11px; font-variant-numeric: tabular-nums; flex: 0 0 auto; min-width: 70px; text-align: right; }
+.psi-chg.up { color: var(--up); }
+.psi-chg.down { color: var(--danger); }
 
 /* ---- Propagation ------------------------------------------------------- */
 

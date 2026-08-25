@@ -19,15 +19,41 @@ const TLE_API = "https://tle.ivanstanojevic.me/api/tle";
 // Curated list of bright / interesting satellites (ISS, stations, weather,
 // Starlink constellation). More sats = higher chance of overhead ones.
 const SAT_IDS = [
-  "25544", "48274", "20580", // ISS, Tiangong, Hubble
-  "28654", "33591", "43013", "28651", // NOAA 18/19, NOAA 20, MetOp-B
+  "25544",
+  "48274",
+  "20580", // ISS, Tiangong, Hubble
+  "28654",
+  "33591",
+  "43013",
+  "28651", // NOAA 18/19, NOAA 20, MetOp-B
   "54216", // CSS Mengtian
-  "44713", "44914", "44724", "44718", "44714", // Starlink
-  "49141", "49140", "52550", "47554", "47752", // Starlink
-  "52690", "52691", "52692", "59618", "58233", // Starlink
-  "60197", "60061", "53550", "56704", "57463", // Starlink
-  "59538", "45386", "68823", "43015", "40014", // Starlink, MIRATA
-  "41770", "42917", // PeruSat, QZS-3
+  "44713",
+  "44914",
+  "44724",
+  "44718",
+  "44714", // Starlink
+  "49141",
+  "49140",
+  "52550",
+  "47554",
+  "47752", // Starlink
+  "52690",
+  "52691",
+  "52692",
+  "59618",
+  "58233", // Starlink
+  "60197",
+  "60061",
+  "53550",
+  "56704",
+  "57463", // Starlink
+  "59538",
+  "45386",
+  "68823",
+  "43015",
+  "40014", // Starlink, MIRATA
+  "41770",
+  "42917", // PeruSat, QZS-3
 ];
 
 function elevationAt(satrec, observerGd, date) {
@@ -42,7 +68,9 @@ async function fetchTle(id) {
   try {
     const { status, body } = await upstreamJson(`${TLE_API}/${id}`, { timeoutMs: 5000 });
     if (status === 200 && body && body.line1 && body.line2) return body;
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
   return null;
 }
 
@@ -67,9 +95,7 @@ export default async function handler(event) {
   const now = new Date();
 
   // Fetch all TLEs in parallel
-  const tles = await Promise.all(
-    SAT_IDS.map((id) => fetchTle(id).then((t) => ({ id, tle: t }))),
-  );
+  const tles = await Promise.all(SAT_IDS.map((id) => fetchTle(id).then((t) => ({ id, tle: t }))));
 
   const results = [];
   for (const { id, tle } of tles) {
@@ -80,7 +106,9 @@ export default async function handler(event) {
       if (elev > 0) {
         results.push({ id, name: tle.name || id, elev: Math.round(elev) });
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   results.sort((a, b) => b.elev - a.elev);
