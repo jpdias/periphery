@@ -2271,6 +2271,7 @@ function openSettings() {
   const psiSym = document.getElementById("cfg-psi-symbol");
   if (psiSym) psiSym.value = cfg.psiSymbol || "";
   renderSatChips();
+  fetchOverheadSats();
   renderSmallClockConfigs();
   renderWidgetToggles();
   renderAlertToggles();
@@ -2439,14 +2440,14 @@ function renderSatChips() {
   });
 }
 
-async function searchSatellites() {
+async function fetchOverheadSats() {
   const box = document.getElementById("sat-results");
-  box.innerHTML = `<span class="hint">searching overhead…</span>`;
+  box.innerHTML = `<span class="hint">loading overhead…</span>`;
   try {
     const { data } = await apiGet("satsearch", { lat: cfg.lat, lon: cfg.lon });
     const arr = data.sats || [];
     if (!arr.length) {
-      box.innerHTML = `<span class="hint">no satellites overhead right now — try again later</span>`;
+      box.innerHTML = `<span class="hint">none overhead right now</span>`;
       return;
     }
     box.innerHTML = "";
@@ -2593,7 +2594,6 @@ function wireEvents() {
       searchStations();
     }
   });
-  document.getElementById("search-sat-btn").addEventListener("click", searchSatellites);
   document.getElementById("add-sat-btn").addEventListener("click", addSatelliteManual);
   document.getElementById("cfg-sat-manual").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
