@@ -5,7 +5,6 @@ import {
   fail,
   requireParams,
   upstreamText,
-  rawResponse,
 } from "./utils.js";
 import { CELESTRAK_BASE } from "./env.js";
 
@@ -25,18 +24,14 @@ export default async function handler(event) {
 
   const url = `${CELESTRAK_BASE}?NAME=${encodeURIComponent(q)}&FORMAT=tle`;
 
-  const { status, body } = await upstreamText(url, { timeoutMs: 10000 });
-  const raw = rawResponse(event, status, body);
-  if (raw) return raw;
+  const { status, body } = await upstreamText(url, { timeoutMs: 8000 });
   if (status !== 200 || !body) {
     return fail(502, "Upstream satellite search failed", { upstreamStatus: status });
   }
 
   const lines = body.split("\n").map((l) => l.trimEnd());
   const sats = [];
-  const limit = 20;
-  for (let i = 0; i < lines.length && sats.length < limit; i++) {
-    // Line 0: satellite name (24 chars), Line 1: TLE with NORAD catalog number
+  for (let i = 0; i < lines.length && sats.length < 20; i++) {
     if (/^[12] /.test(lines[i]) && i > 0) {
       const name = lines[i - 1].trim();
       const catnr = lines[i].substring(2, 7).trim();
