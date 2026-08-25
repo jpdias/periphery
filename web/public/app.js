@@ -1681,7 +1681,7 @@ async function loadSatellites() {
     el.innerHTML = sats
       .map((s) => {
         const url = resolveCardUrl("satellites", { id: s.id });
-        const li = `<span class="sat-name">${esc(s.name)}</span><span class="sat-meta">${esc(s.id)}</span>`;
+        const li = `<span class="sat-name">${esc(s.name)}</span><span class="sat-meta">${esc(s.id)}</span><span class="sat-elev">${s.elev}°</span>`;
         return url ? `<li data-url="${esc(url)}">${li}</li>` : `<li>${li}</li>`;
       })
       .join("");

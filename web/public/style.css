@@ -734,11 +734,10 @@ li[data-url]:hover { opacity: 0.75; }
   font-family: var(--mono);
 }
 .sat-list li:last-child { border-bottom: none; }
-.sat-name { font-weight: 600; width: 90px; flex: 0 0 auto; color: var(--text); }
+.sat-name { font-weight: 600; color: var(--text); min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sat-none { color: var(--muted); font-size: 11px; }
-.sat-pass { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.sat-when { font-variant-numeric: tabular-nums; color: var(--accent); }
-.sat-meta { color: var(--muted); font-size: 11px; }
+.sat-meta { color: var(--muted); font-size: 11px; flex: 0 0 auto; }
+.sat-elev { color: var(--accent); font-weight: 600; flex: 0 0 auto; min-width: 36px; text-align: right; }
 
 /* ---- National grid (REN) ----------------------------------------------- */
 
