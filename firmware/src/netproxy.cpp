@@ -38,7 +38,7 @@ bool skip_proxy_headers(Stream &s) {
   int state = 0;
   gChunked = false;
   gPrefixDone = false;
-  char hdr[64];
+  char hdr[128];
   int hdrLen = 0;
 
   while (s.available()) {

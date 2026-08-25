@@ -119,6 +119,7 @@ static void fail(const char *why) {
   gData.lastOk = false;
   cleanup();
   netsched_done(NS_INCIDENTS);
+  netsched_record_failure();
   phase = P_IDLE;
   first = false;
   lastCycle = millis();

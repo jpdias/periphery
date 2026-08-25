@@ -90,6 +90,7 @@ static void fail(const char *why) {
   gData.lastOk = false;
   cleanup();
   netsched_done(NS_TRAINS);
+  netsched_record_failure();
   phase = P_IDLE;
   step = S_REQ;
   first = false;

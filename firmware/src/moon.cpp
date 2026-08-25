@@ -45,6 +45,7 @@ static void fail(const char* why) {
   http.consume();
   tls_release();
   netsched_done(NS_MOON);
+  netsched_record_failure();
   phase = M_IDLE;
   lastAttempt = millis();
 }

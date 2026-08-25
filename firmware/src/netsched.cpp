@@ -93,8 +93,13 @@ void netsched_done(NS_Slot s) {
   gCursor = (s + 1) % NS_COUNT;
   // Start the cooldown window for the next fetcher.
   if (wasGranted) cooldownUntil = millis() + COOLDOWN_MS;
-  // Track consecutive complete rounds where every slot failed.
-  if (!wasGranted) return;
+}
+
+void netsched_record_success() {
+  consecutiveFails = 0;
+}
+
+void netsched_record_failure() {
   consecutiveFails++;
   if (consecutiveFails >= MAX_CONSECUTIVE_FAILS * NS_COUNT) {
     mlog.printf("[SCHED] %d consecutive failures, rebooting\n", consecutiveFails);
@@ -103,18 +108,19 @@ void netsched_done(NS_Slot s) {
   }
 }
 
-void netsched_record_success() {
-  consecutiveFails = 0;
-}
-
 void netsched_advance() {
   if (any_busy()) return;                  // never move the cursor mid-fetch
   if (millis() < cooldownUntil) return;    // respect cooldown
   // Heap guard: don't start a new fetch if fragmented.
   if (ESP.getMaxFreeBlockSize() < SCHED_MIN_HEAP) return;
+  // Find the next due slot that can actually start.  Skip past slots that are
+  // due but blocked (e.g. heap too low) so the cascade doesn't stall behind
+  // a single memory-hungry fetcher.
   for (int i = 0; i < NS_COUNT; i++) {
     NS_Slot c = (NS_Slot)((gCursor + i) % NS_COUNT);
-    if (slot_due(c)) { gCursor = (int)c; return; }
+    if (!slot_due(c)) continue;
+    gCursor = (int)c;
+    return;
   }
   gCursor = (gCursor + 1) % NS_COUNT;      // nothing due; keep rotating
 }

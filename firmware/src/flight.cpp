@@ -64,6 +64,7 @@ static void fail(const char *why) {
   mlog.printf("[FLT] %s\n", why);
   cleanup();
   netsched_done(NS_FLIGHT);
+  netsched_record_failure();
   phase = P_IDLE;
   lastCycle = millis();
 }

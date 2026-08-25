@@ -45,3 +45,7 @@ void netsched_advance();
 // Reset the consecutive-failure counter after a successful fetch. Call when
 // data actually arrives (parse succeeds).
 void netsched_record_success();
+
+// Increment the consecutive-failure counter. Called from each fetcher's fail()
+// handler so only actual failures count toward the reboot threshold.
+void netsched_record_failure();
